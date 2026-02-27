@@ -1,0 +1,5 @@
+{
+  "name": "StockPulse Interactive",
+  "description": "Interactive stock market dashboard with real-time Yahoo Finance data, featuring hourly, daily, and weekly views.",
+  "requestFramePermissions": []
+}
