@@ -409,6 +409,10 @@ export default function App() {
     }
   }, [portfolioSummaries, activeTab, symbol, latestPrice, transactions.length]);
 
+  const currentStockMeta = useMemo(() => {
+    return STOCK_LIST.find(s => s.symbol === symbol);
+  }, [symbol]);
+
   const lineGradientStops = useMemo(() => {
     if (!stockData?.data || stockData.data.length === 0) return null;
     const data = stockData.data;
@@ -559,6 +563,7 @@ export default function App() {
                         <div>
                           <p className="text-sm font-bold text-zinc-900">{s.symbol}</p>
                           <p className="text-[10px] text-zinc-400 font-medium truncate max-w-[200px]">{s.name}</p>
+                          <p className="text-[9px] text-zinc-300 font-bold uppercase tracking-wider mt-0.5">{s.sector}</p>
                         </div>
                       </div>
                       <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-300">{s.market}</span>
@@ -674,7 +679,15 @@ export default function App() {
                       <span className="text-xs font-bold uppercase tracking-widest text-zinc-900">{symbol}</span>
                     </div>
                     <div className="flex items-baseline gap-4">
-                      <h2 className="text-4xl font-black tracking-tighter">{symbol}</h2>
+                      <div className="flex flex-col">
+                        <h2 className="text-4xl font-black tracking-tighter">{symbol}</h2>
+                        {currentStockMeta && (
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-sm font-bold text-zinc-600">{currentStockMeta.name}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 bg-zinc-100 text-zinc-500 rounded font-bold uppercase tracking-wider">{currentStockMeta.sector}</span>
+                          </div>
+                        )}
+                      </div>
                       {latestPrice && (
                         <div className="flex items-baseline gap-2">
                           <span className="text-3xl font-bold">{formatCurrency(latestPrice, stockData?.currency)}</span>
