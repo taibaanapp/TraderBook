@@ -5,7 +5,8 @@ import Database from 'better-sqlite3';
 import path from 'path';
 
 const yahooFinance = new YahooFinance();
-const db = new Database('data.db');
+const dbPath = process.env.DATABASE_PATH || 'data.db';
+const db = new Database(dbPath);
 
 // Initialize tables
 db.exec(`
