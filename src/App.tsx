@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { 
   LineChart, 
   Line, 
@@ -26,13 +26,15 @@ import {
   Wallet,
   Calculator,
   Plus,
-  Save
+  Save,
+  X,
+  Globe
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { GoogleGenAI } from "@google/genai";
-import { STOCK_LIST } from './constants/stockList';
+import { STOCK_LIST, TH_STOCKS, US_STOCKS } from './constants/stockList';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -133,8 +135,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'chart' | 'portfolio'>('chart');
   const [news, setNews] = useState<NewsItem[]>([]);
   const [newsLoading, setNewsLoading] = useState(false);
-  const [suggestions, setSuggestions] = useState<typeof STOCK_LIST>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [marketFilter, setMarketFilter] = useState<'ALL' | 'TH' | 'US'>('ALL');
+  const deferredSearchInput = useDeferredValue(searchInput);
 
   // Portfolio State
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -264,13 +267,28 @@ export default function App() {
     });
   }, [stockData]);
 
-  const fetchNews = async (targetSymbol: string) => {
+  const fetchNews = async (targetSymbol: string, companyName?: string) => {
     setNewsLoading(true);
+    setNews([]);
     try {
-      const response = await fetch(`/api/news/${targetSymbol}`);
+      // Try symbol first
+      let response = await fetch(`/api/news/${targetSymbol}`);
+      let newsData: NewsItem[] = [];
+      
       if (response.ok) {
-        const newsData: NewsItem[] = await response.json();
-        
+        newsData = await response.json();
+      }
+
+      // Fallback to company name if no news found for symbol
+      if (newsData.length === 0 && companyName) {
+        const cleanName = companyName.split(' ')[0]; // Use first word of company name
+        response = await fetch(`/api/news/${encodeURIComponent(cleanName)}`);
+        if (response.ok) {
+          newsData = await response.json();
+        }
+      }
+
+      if (newsData.length > 0) {
         // Translate news titles using Gemini
         const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
         const translatedNews = await Promise.all(newsData.map(async (item) => {
@@ -279,13 +297,13 @@ export default function App() {
               model: "gemini-3-flash-preview",
               contents: `Translate this stock news headline to professional Thai: "${item.title}"`,
               config: {
-                systemInstruction: "You are a professional financial translator. Provide only the Thai translation, no extra text.",
+                systemInstruction: "You are a professional financial translator. Provide only the Thai translation, no extra text. If the headline is already in Thai or impossible to translate, return the original.",
               }
             });
-            return { ...item, translatedTitle: result.text?.trim() };
+            return { ...item, translatedTitle: result.text?.trim() || item.title };
           } catch (e) {
             console.error('Translation error:', e);
-            return item;
+            return { ...item, translatedTitle: item.title };
           }
         }));
         setNews(translatedNews);
@@ -308,7 +326,9 @@ export default function App() {
       }
       const data = await response.json();
       setStockData(data);
-      fetchNews(targetSymbol);
+      
+      const stockMeta = STOCK_LIST.find(s => s.symbol === targetSymbol);
+      fetchNews(targetSymbol, stockMeta?.name);
     } catch (err: any) {
       setError(err.message);
       setStockData(null);
@@ -317,13 +337,16 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    const filtered = STOCK_LIST.filter(s => 
-      s.symbol.toLowerCase().includes(searchInput.toLowerCase()) || 
-      s.name.toLowerCase().includes(searchInput.toLowerCase())
+  const suggestions = useMemo(() => {
+    if (!deferredSearchInput.trim()) return [];
+    const query = deferredSearchInput.toLowerCase();
+    const baseList = marketFilter === 'ALL' ? STOCK_LIST : (marketFilter === 'TH' ? TH_STOCKS : US_STOCKS);
+    
+    return baseList.filter(s => 
+      s.symbol.toLowerCase().includes(query) || 
+      s.name.toLowerCase().includes(query)
     ).slice(0, 8);
-    setSuggestions(filtered);
-  }, [searchInput]);
+  }, [deferredSearchInput, marketFilter]);
 
   useEffect(() => {
     fetchData(symbol, interval);
@@ -485,33 +508,63 @@ export default function App() {
                 onChange={(e) => { setSearchInput(e.target.value); setShowSuggestions(true); }}
                 onFocus={() => setShowSuggestions(true)}
                 placeholder="Search symbol (e.g. AAPL, PTT.BK)"
-                className="w-full bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-900 focus:ring-0 rounded-xl pl-10 pr-4 py-2 text-sm transition-all outline-none border"
+                className="w-full bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-900 focus:ring-0 rounded-xl pl-10 pr-10 py-2 text-sm transition-all outline-none border"
               />
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={() => { setSearchInput(''); setShowSuggestions(false); }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-zinc-200 rounded-full transition-colors"
+                >
+                  <X className="w-3 h-3 text-zinc-400" />
+                </button>
+              )}
             </div>
             
-            {showSuggestions && suggestions.length > 0 && (
+            {showSuggestions && (
               <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-zinc-200 rounded-xl shadow-2xl overflow-hidden z-50">
-                {suggestions.map((s) => (
-                  <button
-                    key={s.symbol}
-                    type="button"
-                    onClick={() => {
-                      setSymbol(s.symbol);
-                      setSearchInput(s.symbol);
-                      setShowSuggestions(false);
-                    }}
-                    className="w-full px-4 py-3 flex items-center justify-between hover:bg-zinc-50 transition-colors border-b border-zinc-50 last:border-0 text-left"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-xl">{getFlag(s.symbol)}</span>
-                      <div>
-                        <p className="text-sm font-bold text-zinc-900">{s.symbol}</p>
-                        <p className="text-[10px] text-zinc-400 font-medium truncate max-w-[200px]">{s.name}</p>
-                      </div>
+                <div className="flex bg-zinc-50 border-b border-zinc-100 p-1">
+                  {(['ALL', 'TH', 'US'] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setMarketFilter(m)}
+                      className={cn(
+                        "flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded-md transition-all",
+                        marketFilter === m ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-600"
+                      )}
+                    >
+                      {m === 'ALL' ? 'ทั้งหมด' : (m === 'TH' ? 'หุ้นไทย 🇹🇭' : 'หุ้นเมกา 🇺🇸')}
+                    </button>
+                  ))}
+                </div>
+                <div className="max-h-[400px] overflow-y-auto">
+                  {suggestions.length === 0 ? (
+                    <div className="px-4 py-8 text-center text-zinc-400 text-xs italic">
+                      ไม่พบรายชื่อหุ้นที่ค้นหา
                     </div>
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-300">{s.market}</span>
-                  </button>
-                ))}
+                  ) : suggestions.map((s) => (
+                    <button
+                      key={s.symbol}
+                      type="button"
+                      onClick={() => {
+                        setSymbol(s.symbol);
+                        setSearchInput(s.symbol);
+                        setShowSuggestions(false);
+                      }}
+                      className="w-full px-4 py-3 flex items-center justify-between hover:bg-zinc-50 transition-colors border-b border-zinc-50 last:border-0 text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl">{getFlag(s.symbol)}</span>
+                        <div>
+                          <p className="text-sm font-bold text-zinc-900">{s.symbol}</p>
+                          <p className="text-[10px] text-zinc-400 font-medium truncate max-w-[200px]">{s.name}</p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-300">{s.market}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
             {showSuggestions && (
@@ -815,7 +868,21 @@ export default function App() {
 
               <div className="bg-white rounded-2xl border border-zinc-200 p-6">
                 <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-4 flex items-center justify-between">
-                  <span>Latest News</span>
+                  <div className="flex items-center gap-2">
+                    <span>Latest News</span>
+                    {news.length > 0 && !newsLoading && (
+                      <button 
+                        onClick={() => {
+                          const stockMeta = STOCK_LIST.find(s => s.symbol === symbol);
+                          fetchNews(symbol, stockMeta?.name);
+                        }}
+                        className="p-1 hover:bg-zinc-100 rounded-full transition-colors"
+                        title="Refresh news"
+                      >
+                        <RefreshCcw className={cn("w-3 h-3 text-zinc-400", newsLoading && "animate-spin")} />
+                      </button>
+                    )}
+                  </div>
                   <span className="text-[10px] text-zinc-300 font-medium">Translated by AI</span>
                 </h3>
                 <div className="space-y-4">
@@ -829,7 +896,18 @@ export default function App() {
                       ))}
                     </div>
                   ) : news.length === 0 ? (
-                    <p className="text-xs text-zinc-400 text-center py-4 italic">No news available for this asset.</p>
+                    <div className="text-center py-6">
+                      <p className="text-xs text-zinc-400 italic mb-3">ไม่พบข่าวสารสำหรับหุ้นตัวนี้ในขณะนี้</p>
+                      <button 
+                        onClick={() => {
+                          const stockMeta = STOCK_LIST.find(s => s.symbol === symbol);
+                          fetchNews(symbol, stockMeta?.name);
+                        }}
+                        className="text-[10px] font-bold uppercase tracking-widest text-zinc-900 hover:underline flex items-center gap-1 mx-auto"
+                      >
+                        <RefreshCcw className="w-3 h-3" /> ลองโหลดใหม่อีกครั้ง
+                      </button>
+                    </div>
                   ) : news.map((item) => (
                     <div key={item.uuid} className="group">
                       <a 

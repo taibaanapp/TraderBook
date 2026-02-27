@@ -5,8 +5,8 @@ export interface StockMetadata {
   market: 'US' | 'TH';
 }
 
-export const STOCK_LIST: StockMetadata[] = [
-  // THAI STOCKS
+// THAI STOCKS
+export const TH_STOCKS: StockMetadata[] = [
   { symbol: 'PTT.BK', name: 'PTT Public Company Limited', sector: 'Energy', market: 'TH' },
   { symbol: 'CPALL.BK', name: 'CP ALL Public Company Limited', sector: 'Consumer Staples', market: 'TH' },
   { symbol: 'AOT.BK', name: 'Airports of Thailand Public Company Limited', sector: 'Industrials', market: 'TH' },
@@ -37,8 +37,10 @@ export const STOCK_LIST: StockMetadata[] = [
   { symbol: 'KTC.BK', name: 'Krungthai Card Public Company Limited', sector: 'Financials', market: 'TH' },
   { symbol: 'BTS.BK', name: 'BTS Group Holdings Public Company Limited', sector: 'Industrials', market: 'TH' },
   { symbol: 'BEM.BK', name: 'Bangkok Expressway and Metro Public Company Limited', sector: 'Industrials', market: 'TH' },
+];
 
-  // US STOCKS
+// US STOCKS
+export const US_STOCKS: StockMetadata[] = [
   { symbol: 'AAPL', name: 'Apple Inc.', sector: 'Technology', market: 'US' },
   { symbol: 'MSFT', name: 'Microsoft Corporation', sector: 'Technology', market: 'US' },
   { symbol: 'GOOGL', name: 'Alphabet Inc.', sector: 'Technology', market: 'US' },
@@ -70,3 +72,5 @@ export const STOCK_LIST: StockMetadata[] = [
   { symbol: 'PYPL', name: 'PayPal Holdings, Inc.', sector: 'Financials', market: 'US' },
   { symbol: 'NKE', name: 'NIKE, Inc.', sector: 'Consumer Discretionary', market: 'US' },
 ];
+
+export const STOCK_LIST: StockMetadata[] = [...TH_STOCKS, ...US_STOCKS];

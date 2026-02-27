@@ -72,7 +72,9 @@ async function startServer() {
   app.get("/api/news/:symbol", async (req, res) => {
     const { symbol } = req.params;
     try {
-      const result = await yahooFinance.search(symbol, { newsCount: 3 });
+      console.log(`Fetching news for: ${symbol}`);
+      const result = await yahooFinance.search(symbol, { newsCount: 5 });
+      console.log(`News found for ${symbol}: ${result.news?.length || 0}`);
       res.json(result.news || []);
     } catch (error) {
       console.error('News Fetch Error:', error);
