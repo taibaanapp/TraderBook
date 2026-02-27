@@ -78,6 +78,37 @@ interface PortfolioSummary {
   totalCost: number;
 }
 
+const getFlag = (symbol: string) => {
+  const s = symbol.toUpperCase();
+  if (s.endsWith('.BK')) return '🇹🇭';
+  if (s.endsWith('.HK')) return '🇭🇰';
+  if (s.endsWith('.SS') || s.endsWith('.SZ')) return '🇨🇳';
+  if (s.endsWith('.T')) return '🇯🇵';
+  if (s.endsWith('.L')) return '🇬🇧';
+  if (s.endsWith('.DE')) return '🇩🇪';
+  if (s.endsWith('.PA')) return '🇫เร';
+  if (s.endsWith('.TO')) return '🇨🇦';
+  if (s.endsWith('.AX')) return '🇦🇺';
+  if (s.endsWith('.NS') || s.endsWith('.BO')) return '🇮🇳';
+  if (s.endsWith('.SG')) return '🇸🇬';
+  if (s.endsWith('.KL')) return '🇲🇾';
+  if (s.includes('-USD') || s.includes('-BTC')) return '₿';
+  return '🇺🇸';
+};
+
+const formatCurrency = (value: number, currency: string = 'USD') => {
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(value);
+  } catch (e) {
+    return `${currency} ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+};
+
 export default function App() {
   const [symbol, setSymbol] = useState('AAPL');
   const [searchInput, setSearchInput] = useState('AAPL');
@@ -100,6 +131,7 @@ export default function App() {
   });
 
   const [simAdditionalShares, setSimAdditionalShares] = useState(0);
+  const [marketPrices, setMarketPrices] = useState<{ [key: string]: { price: number, currency: string } }>({});
 
   // Fetch transactions on mount
   useEffect(() => {
@@ -251,6 +283,51 @@ export default function App() {
   const priceChange = latestPrice && previousPrice ? latestPrice - previousPrice : 0;
   const percentChange = latestPrice && previousPrice ? (priceChange / previousPrice) * 100 : 0;
 
+  // Fetch market prices for portfolio
+  useEffect(() => {
+    const fetchMarketPrices = async () => {
+      const symbolsToFetch = portfolioSummaries.map(s => s.symbol);
+      if (symbolsToFetch.length === 0) return;
+
+      const newPrices = { ...marketPrices };
+      let changed = false;
+
+      for (const s of symbolsToFetch) {
+        // If it's the current symbol, we already have the price
+        if (s === symbol && latestPrice) {
+          if (newPrices[s]?.price !== latestPrice) {
+            newPrices[s] = { price: latestPrice, currency: stockData?.currency || 'USD' };
+            changed = true;
+          }
+          continue;
+        }
+
+        // Fetch price if not present or if we are in portfolio tab
+        if (!newPrices[s] || activeTab === 'portfolio') {
+          try {
+            const response = await fetch(`/api/stock/${s}?interval=1d&from=2024-01-01`);
+            if (response.ok) {
+              const data = await response.json();
+              const price = data.data[data.data.length - 1].close;
+              newPrices[s] = { price, currency: data.currency };
+              changed = true;
+            }
+          } catch (err) {
+            console.error(`Failed to fetch price for ${s}:`, err);
+          }
+        }
+      }
+
+      if (changed) {
+        setMarketPrices(newPrices);
+      }
+    };
+
+    if (activeTab === 'portfolio' || transactions.length > 0) {
+      fetchMarketPrices();
+    }
+  }, [portfolioSummaries, activeTab, symbol, latestPrice, transactions.length]);
+
   const lineGradientStops = useMemo(() => {
     if (!stockData?.data || stockData.data.length === 0) return null;
     const data = stockData.data;
@@ -270,15 +347,15 @@ export default function App() {
             {format(new Date(label), interval === '1h' ? 'MMM d, yyyy HH:mm' : 'MMM d, yyyy')}
           </p>
           <p className="text-lg font-bold text-zinc-900">
-            ${payload[0].value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {formatCurrency(payload[0].value, stockData?.currency)}
           </p>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2 text-[10px] uppercase tracking-wider font-semibold text-zinc-400">
             <span>Open</span>
-            <span className="text-zinc-700 text-right">${payload[0].payload.open.toFixed(2)}</span>
+            <span className="text-zinc-700 text-right">{formatCurrency(payload[0].payload.open, stockData?.currency)}</span>
             <span>High</span>
-            <span className="text-zinc-700 text-right">${payload[0].payload.high.toFixed(2)}</span>
+            <span className="text-zinc-700 text-right">{formatCurrency(payload[0].payload.high, stockData?.currency)}</span>
             <span>Low</span>
-            <span className="text-zinc-700 text-right">${payload[0].payload.low.toFixed(2)}</span>
+            <span className="text-zinc-700 text-right">{formatCurrency(payload[0].payload.low, stockData?.currency)}</span>
             <span>Volume</span>
             <span className="text-zinc-700 text-right">{(payload[0].payload.volume / 1000000).toFixed(2)}M</span>
             {payload[0].payload.pe !== null ? (
@@ -306,7 +383,7 @@ export default function App() {
             {showVWAP && payload[0].payload.vwap && (
               <>
                 <span>VWAP</span>
-                <span className="text-blue-600 text-right">${payload[0].payload.vwap.toFixed(2)}</span>
+                <span className="text-blue-600 text-right">{formatCurrency(payload[0].payload.vwap, stockData?.currency)}</span>
               </>
             )}
             {showOBV && payload[0].payload.obv !== undefined && (
@@ -329,11 +406,11 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-zinc-900 rounded-xl flex items-center justify-center">
-              <TrendingUp className="text-white w-6 h-6" />
+              <Wallet className="text-white w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-lg font-bold tracking-tight">StockPulse</h1>
-              <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-400 leading-none">Terminal v1.0</p>
+              <h1 className="text-lg font-black tracking-tight">TraderBook 99 สาธุ</h1>
+              <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-400 leading-none">Professional Trading Log</p>
             </div>
           </div>
 
@@ -440,26 +517,29 @@ export default function App() {
             <div className="lg:col-span-3 space-y-8">
               {/* Asset Info */}
               <div className="bg-white rounded-2xl border border-zinc-200 p-6 flex flex-wrap items-end justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-bold uppercase tracking-widest text-zinc-400">Market Data</span>
-                    <ChevronRight className="w-3 h-3 text-zinc-300" />
-                    <span className="text-xs font-bold uppercase tracking-widest text-zinc-900">{symbol}</span>
-                  </div>
-                  <div className="flex items-baseline gap-4">
-                    <h2 className="text-4xl font-black tracking-tighter">{symbol}</h2>
-                    {latestPrice && (
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-3xl font-bold">${latestPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                        <span className={cn(
-                          "text-sm font-bold flex items-center gap-1",
-                          priceChange >= 0 ? "text-emerald-600" : "text-rose-600"
-                        )}>
-                          {priceChange >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                          {Math.abs(priceChange).toFixed(2)} ({percentChange.toFixed(2)}%)
-                        </span>
-                      </div>
-                    )}
+                <div className="flex items-center gap-4">
+                  <div className="text-5xl">{getFlag(symbol)}</div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-bold uppercase tracking-widest text-zinc-400">Market Data</span>
+                      <ChevronRight className="w-3 h-3 text-zinc-300" />
+                      <span className="text-xs font-bold uppercase tracking-widest text-zinc-900">{symbol}</span>
+                    </div>
+                    <div className="flex items-baseline gap-4">
+                      <h2 className="text-4xl font-black tracking-tighter">{symbol}</h2>
+                      {latestPrice && (
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-3xl font-bold">{formatCurrency(latestPrice, stockData?.currency)}</span>
+                          <span className={cn(
+                            "text-sm font-bold flex items-center gap-1",
+                            priceChange >= 0 ? "text-emerald-600" : "text-rose-600"
+                          )}>
+                            {priceChange >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                            {Math.abs(priceChange).toFixed(2)} ({percentChange.toFixed(2)}%)
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
                 
@@ -606,16 +686,16 @@ export default function App() {
                 <div className="space-y-4">
                   <div>
                     <p className="text-[10px] uppercase font-bold text-zinc-500 mb-1">Current Price</p>
-                    <p className="text-2xl font-bold">${latestPrice?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                    <p className="text-2xl font-bold">{formatCurrency(latestPrice || 0, stockData?.currency)}</p>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-[10px] uppercase font-bold text-zinc-500 mb-1">24h High</p>
-                      <p className="text-sm font-bold">${Math.max(...(stockData?.data.slice(-24).map(d => d.high) || [0])).toFixed(2)}</p>
+                      <p className="text-sm font-bold">{formatCurrency(Math.max(...(stockData?.data.slice(-24).map(d => d.high) || [0])), stockData?.currency)}</p>
                     </div>
                     <div>
                       <p className="text-[10px] uppercase font-bold text-zinc-500 mb-1">24h Low</p>
-                      <p className="text-sm font-bold">${Math.min(...(stockData?.data.slice(-24).map(d => d.low) || [0])).toFixed(2)}</p>
+                      <p className="text-sm font-bold">{formatCurrency(Math.min(...(stockData?.data.slice(-24).map(d => d.low) || [0])), stockData?.currency)}</p>
                     </div>
                   </div>
                   <div className="pt-4 border-t border-zinc-800">
@@ -696,7 +776,7 @@ export default function App() {
                     </div>
                     <div className="bg-zinc-50 p-3 rounded-xl border border-zinc-100">
                       <p className="text-[10px] uppercase font-bold text-zinc-400 mb-1">Avg Cost</p>
-                      <p className="text-sm font-bold text-zinc-900">${currentSummary.avgCost.toFixed(2)}</p>
+                      <p className="text-sm font-bold text-zinc-900">{formatCurrency(currentSummary.avgCost, stockData?.currency)}</p>
                     </div>
                   </div>
 
@@ -728,13 +808,13 @@ export default function App() {
                           <div className="flex justify-between items-center mb-1">
                             <span className="text-[10px] font-bold text-zinc-500 uppercase">New Average</span>
                             <span className="text-xs font-bold text-emerald-400">
-                              {((currentSummary.totalShares * currentSummary.avgCost + simAdditionalShares * latestPrice) / (currentSummary.totalShares + simAdditionalShares || 1)).toFixed(2)}
+                              {formatCurrency(((currentSummary.totalShares * currentSummary.avgCost + simAdditionalShares * latestPrice) / (currentSummary.totalShares + simAdditionalShares || 1)), stockData?.currency)}
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
                             <span className="text-[10px] font-bold text-zinc-500 uppercase">Total Value</span>
                             <span className="text-xs font-bold">
-                              ${((currentSummary.totalShares + simAdditionalShares) * latestPrice).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                              {formatCurrency(((currentSummary.totalShares + simAdditionalShares) * latestPrice), stockData?.currency)}
                             </span>
                           </div>
                         </div>
@@ -746,7 +826,7 @@ export default function App() {
                             return (
                               <div key={amount} className="flex justify-between items-center text-[11px] py-1">
                                 <span className="text-zinc-500 font-medium">Buy +{amount} shares</span>
-                                <span className="font-bold text-zinc-900">New Avg: ${newAvg.toFixed(2)}</span>
+                                <span className="font-bold text-zinc-900">New Avg: {formatCurrency(newAvg, stockData?.currency)}</span>
                               </div>
                             );
                           })}
@@ -770,9 +850,9 @@ export default function App() {
                       <p className="text-xs font-bold uppercase tracking-widest text-zinc-400">All recorded holdings</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Portfolio Value</p>
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Est. Portfolio Value</p>
                       <p className="text-2xl font-black text-zinc-900">
-                        ${portfolioSummaries.reduce((sum, s) => sum + (s.totalShares * (s.symbol === symbol ? (latestPrice || s.avgCost) : s.avgCost)), 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        {portfolioSummaries.reduce((sum, s) => sum + (s.totalShares * (marketPrices[s.symbol]?.price || s.avgCost)), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
                     </div>
                   </div>
@@ -784,39 +864,59 @@ export default function App() {
                           <th className="text-left py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Asset</th>
                           <th className="text-right py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Shares</th>
                           <th className="text-right py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Avg Cost</th>
-                          <th className="text-right py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Total Cost</th>
+                          <th className="text-right py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Market Price</th>
+                          <th className="text-right py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">P/L</th>
                           <th className="text-right py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Action</th>
                         </tr>
                       </thead>
                       <tbody>
                         {portfolioSummaries.length === 0 ? (
                           <tr>
-                            <td colSpan={5} className="py-12 text-center text-zinc-400 text-sm font-medium">No holdings recorded yet.</td>
+                            <td colSpan={6} className="py-12 text-center text-zinc-400 text-sm font-medium">No holdings recorded yet.</td>
                           </tr>
-                        ) : portfolioSummaries.map(s => (
-                          <tr key={s.symbol} className="border-b border-zinc-50 hover:bg-zinc-50/50 transition-colors group">
-                            <td className="py-4">
-                              <button 
-                                onClick={() => { setSymbol(s.symbol); setSearchInput(s.symbol); setActiveTab('chart'); }}
-                                className="font-bold text-zinc-900 hover:underline flex items-center gap-2"
-                              >
-                                {s.symbol}
-                                <ChevronRight className="w-3 h-3 text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity" />
-                              </button>
-                            </td>
-                            <td className="text-right py-4 font-bold text-zinc-700">{s.totalShares}</td>
-                            <td className="text-right py-4 font-bold text-zinc-700">${s.avgCost.toFixed(2)}</td>
-                            <td className="text-right py-4 font-bold text-zinc-700">${s.totalCost.toLocaleString()}</td>
-                            <td className="text-right py-4">
-                              <button 
-                                onClick={() => { setSymbol(s.symbol); setSearchInput(s.symbol); }}
-                                className="text-[10px] font-bold uppercase text-zinc-400 hover:text-zinc-900 transition-colors"
-                              >
-                                Select
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                        ) : portfolioSummaries.map(s => {
+                          const mPrice = marketPrices[s.symbol];
+                          const currentPrice = mPrice?.price || 0;
+                          const marketValue = s.totalShares * currentPrice;
+                          const pl = marketValue - s.totalCost;
+                          const plPercent = s.totalCost > 0 ? (pl / s.totalCost) * 100 : 0;
+                          const cur = mPrice?.currency || 'USD';
+
+                          return (
+                            <tr key={s.symbol} className="border-b border-zinc-50 hover:bg-zinc-50/50 transition-colors group">
+                              <td className="py-4">
+                                <button 
+                                  onClick={() => { setSymbol(s.symbol); setSearchInput(s.symbol); setActiveTab('chart'); }}
+                                  className="font-bold text-zinc-900 hover:underline flex items-center gap-2"
+                                >
+                                  <span className="text-xl">{getFlag(s.symbol)}</span>
+                                  {s.symbol}
+                                  <ChevronRight className="w-3 h-3 text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </button>
+                              </td>
+                              <td className="text-right py-4 font-bold text-zinc-700">{s.totalShares}</td>
+                              <td className="text-right py-4 font-bold text-zinc-700">{formatCurrency(s.avgCost, cur)}</td>
+                              <td className="text-right py-4 font-bold text-zinc-700">
+                                {currentPrice ? formatCurrency(currentPrice, cur) : 'Loading...'}
+                              </td>
+                              <td className={cn(
+                                "text-right py-4 font-bold",
+                                pl >= 0 ? "text-emerald-600" : "text-rose-600"
+                              )}>
+                                <div>{pl >= 0 ? '+' : ''}{formatCurrency(pl, cur)}</div>
+                                <div className="text-[10px] uppercase tracking-wider">{plPercent.toFixed(2)}%</div>
+                              </td>
+                              <td className="text-right py-4">
+                                <button 
+                                  onClick={() => { setSymbol(s.symbol); setSearchInput(s.symbol); }}
+                                  className="text-[10px] font-bold uppercase text-zinc-400 hover:text-zinc-900 transition-colors"
+                                >
+                                  Select
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -841,7 +941,7 @@ export default function App() {
                             {t.type}
                           </div>
                           <div>
-                            <p className="text-sm font-bold text-zinc-900">{t.shares} shares @ ${t.price.toFixed(2)}</p>
+                            <p className="text-sm font-bold text-zinc-900">{t.shares} shares @ {formatCurrency(t.price, stockData?.currency)}</p>
                             <p className="text-[10px] font-bold text-zinc-400 uppercase">{t.date}</p>
                           </div>
                         </div>
