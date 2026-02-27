@@ -31,6 +31,8 @@ import {
 import { format, parseISO } from 'date-fns';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { GoogleGenAI } from "@google/genai";
+import { STOCK_LIST } from './constants/stockList';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -54,6 +56,16 @@ interface ApiResponse {
   symbol: string;
   currency: string;
   data: StockData[];
+}
+
+interface NewsItem {
+  uuid: string;
+  title: string;
+  publisher: string;
+  link: string;
+  providerPublishTime: number;
+  thumbnail?: { resolutions: { url: string }[] };
+  translatedTitle?: string;
 }
 
 const INTERVALS = [
@@ -119,6 +131,10 @@ export default function App() {
   const [showVWAP, setShowVWAP] = useState(false);
   const [showOBV, setShowOBV] = useState(false);
   const [activeTab, setActiveTab] = useState<'chart' | 'portfolio'>('chart');
+  const [news, setNews] = useState<NewsItem[]>([]);
+  const [newsLoading, setNewsLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<typeof STOCK_LIST>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   // Portfolio State
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -248,6 +264,39 @@ export default function App() {
     });
   }, [stockData]);
 
+  const fetchNews = async (targetSymbol: string) => {
+    setNewsLoading(true);
+    try {
+      const response = await fetch(`/api/news/${targetSymbol}`);
+      if (response.ok) {
+        const newsData: NewsItem[] = await response.json();
+        
+        // Translate news titles using Gemini
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+        const translatedNews = await Promise.all(newsData.map(async (item) => {
+          try {
+            const result = await ai.models.generateContent({
+              model: "gemini-3-flash-preview",
+              contents: `Translate this stock news headline to professional Thai: "${item.title}"`,
+              config: {
+                systemInstruction: "You are a professional financial translator. Provide only the Thai translation, no extra text.",
+              }
+            });
+            return { ...item, translatedTitle: result.text?.trim() };
+          } catch (e) {
+            console.error('Translation error:', e);
+            return item;
+          }
+        }));
+        setNews(translatedNews);
+      }
+    } catch (err) {
+      console.error('Failed to fetch news:', err);
+    } finally {
+      setNewsLoading(false);
+    }
+  };
+
   const fetchData = async (targetSymbol: string, targetInterval: string) => {
     setLoading(true);
     setError(null);
@@ -259,6 +308,7 @@ export default function App() {
       }
       const data = await response.json();
       setStockData(data);
+      fetchNews(targetSymbol);
     } catch (err: any) {
       setError(err.message);
       setStockData(null);
@@ -266,6 +316,14 @@ export default function App() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const filtered = STOCK_LIST.filter(s => 
+      s.symbol.toLowerCase().includes(searchInput.toLowerCase()) || 
+      s.name.toLowerCase().includes(searchInput.toLowerCase())
+    ).slice(0, 8);
+    setSuggestions(filtered);
+  }, [searchInput]);
 
   useEffect(() => {
     fetchData(symbol, interval);
@@ -344,7 +402,11 @@ export default function App() {
       return (
         <div className="bg-white p-4 border border-zinc-200 shadow-xl rounded-lg">
           <p className="text-xs font-mono text-zinc-500 mb-1">
-            {format(new Date(label), interval === '1h' ? 'MMM d, yyyy HH:mm' : 'MMM d, yyyy')}
+            {(() => {
+              const d = new Date(label);
+              if (isNaN(d.getTime())) return 'N/A';
+              return format(d, interval === '1h' ? 'MMM d, yyyy HH:mm' : 'MMM d, yyyy');
+            })()}
           </p>
           <p className="text-lg font-bold text-zinc-900">
             {formatCurrency(payload[0].value, stockData?.currency)}
@@ -414,17 +476,50 @@ export default function App() {
             </div>
           </div>
 
-          <form onSubmit={handleSearch} className="flex-1 max-w-md mx-8">
+          <form onSubmit={handleSearch} className="flex-1 max-w-md mx-8 relative">
             <div className="relative group">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 group-focus-within:text-zinc-900 transition-colors" />
               <input
                 type="text"
                 value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Search symbol (e.g. AAPL, BTC-USD, TSLA)"
+                onChange={(e) => { setSearchInput(e.target.value); setShowSuggestions(true); }}
+                onFocus={() => setShowSuggestions(true)}
+                placeholder="Search symbol (e.g. AAPL, PTT.BK)"
                 className="w-full bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-900 focus:ring-0 rounded-xl pl-10 pr-4 py-2 text-sm transition-all outline-none border"
               />
             </div>
+            
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-zinc-200 rounded-xl shadow-2xl overflow-hidden z-50">
+                {suggestions.map((s) => (
+                  <button
+                    key={s.symbol}
+                    type="button"
+                    onClick={() => {
+                      setSymbol(s.symbol);
+                      setSearchInput(s.symbol);
+                      setShowSuggestions(false);
+                    }}
+                    className="w-full px-4 py-3 flex items-center justify-between hover:bg-zinc-50 transition-colors border-b border-zinc-50 last:border-0 text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">{getFlag(s.symbol)}</span>
+                      <div>
+                        <p className="text-sm font-bold text-zinc-900">{s.symbol}</p>
+                        <p className="text-[10px] text-zinc-400 font-medium truncate max-w-[200px]">{s.name}</p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-300">{s.market}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {showSuggestions && (
+              <div 
+                className="fixed inset-0 z-40" 
+                onClick={() => setShowSuggestions(false)} 
+              />
+            )}
           </form>
 
           <div className="flex items-center gap-4">
@@ -715,6 +810,50 @@ export default function App() {
                       ))}
                     </div>
                   </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-zinc-200 p-6">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-4 flex items-center justify-between">
+                  <span>Latest News</span>
+                  <span className="text-[10px] text-zinc-300 font-medium">Translated by AI</span>
+                </h3>
+                <div className="space-y-4">
+                  {newsLoading ? (
+                    <div className="space-y-3">
+                      {[1, 2, 3].map(i => (
+                        <div key={i} className="animate-pulse space-y-2">
+                          <div className="h-3 bg-zinc-100 rounded w-full" />
+                          <div className="h-2 bg-zinc-50 rounded w-2/3" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : news.length === 0 ? (
+                    <p className="text-xs text-zinc-400 text-center py-4 italic">No news available for this asset.</p>
+                  ) : news.map((item) => (
+                    <div key={item.uuid} className="group">
+                      <a 
+                        href={item.link} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="block space-y-1"
+                      >
+                        <p className="text-xs font-bold text-zinc-900 group-hover:text-blue-600 transition-colors leading-snug">
+                          {item.translatedTitle || item.title}
+                        </p>
+                        <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                          <span>{item.publisher}</span>
+                          <span>
+                            {(() => {
+                              const d = new Date(item.providerPublishTime * 1000);
+                              if (isNaN(d.getTime())) return 'N/A';
+                              return format(d, 'MMM d');
+                            })()}
+                          </span>
+                        </div>
+                      </a>
+                    </div>
+                  ))}
                 </div>
               </div>
 

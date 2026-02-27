@@ -69,6 +69,17 @@ async function startServer() {
     }
   });
 
+  app.get("/api/news/:symbol", async (req, res) => {
+    const { symbol } = req.params;
+    try {
+      const result = await yahooFinance.search(symbol, { newsCount: 3 });
+      res.json(result.news || []);
+    } catch (error) {
+      console.error('News Fetch Error:', error);
+      res.status(500).json({ error: 'Failed to fetch news' });
+    }
+  });
+
   app.get("/api/stock/:symbol", async (req, res) => {
     const { symbol } = req.params;
     const { interval = '1d', from = '2020-01-01' } = req.query;
