@@ -1,74 +1,30 @@
 import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer, 
-  AreaChart, 
-  Area,
-  BarChart,
-  Bar,
-  Cell
-} from 'recharts';
-import { 
   Search, 
   TrendingUp, 
-  TrendingDown, 
   Clock, 
-  Calendar, 
-  BarChart3,
   RefreshCcw,
   AlertCircle,
-  ChevronRight,
   Wallet,
-  Calculator,
+  X,
   Plus,
   Save,
-  X,
-  Globe
+  ChevronRight,
+  Calculator,
+  Monitor
 } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
 import { GoogleGenAI } from "@google/genai";
 import { STOCK_LIST, TH_STOCKS, US_STOCKS } from './constants/stockList';
-
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-
-interface StockData {
-  date: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-  volumeColor: string;
-  pe: number | null;
-  pb: number | null;
-  vwap?: number;
-  obv?: number;
-}
-
-interface ApiResponse {
-  symbol: string;
-  currency: string;
-  data: StockData[];
-}
-
-interface NewsItem {
-  uuid: string;
-  title: string;
-  publisher: string;
-  link: string;
-  providerPublishTime: number;
-  thumbnail?: { resolutions: { url: string }[] };
-  translatedTitle?: string;
-}
+import { TradingChart } from './components/TradingChart';
+import { Legend } from './components/Legend';
+import { AssetInfo } from './components/AssetInfo';
+import { ChartControls } from './components/ChartControls';
+import { StockNotebook } from './components/StockNotebook';
+import { MarketDetails } from './components/MarketDetails';
+import { calculateCompositeMoneyFlow, calculateVWAP } from './services/indicatorService';
+import { getFlag, formatCurrency } from './utils/formatters';
+import { cn } from './utils/cn';
+import { StockData, ApiResponse, Transaction, PortfolioSummary } from './types';
 
 const INTERVALS = [
   { label: 'Hourly', value: '1h' },
@@ -76,52 +32,6 @@ const INTERVALS = [
   { label: 'Weekly', value: '1wk' },
 ];
 
-interface Transaction {
-  id: string;
-  symbol: string;
-  type: 'BUY' | 'SELL';
-  shares: number;
-  price: number;
-  date: string;
-}
-
-interface PortfolioSummary {
-  symbol: string;
-  totalShares: number;
-  avgCost: number;
-  totalCost: number;
-}
-
-const getFlag = (symbol: string) => {
-  const s = symbol.toUpperCase();
-  if (s.endsWith('.BK')) return '🇹🇭';
-  if (s.endsWith('.HK')) return '🇭🇰';
-  if (s.endsWith('.SS') || s.endsWith('.SZ')) return '🇨🇳';
-  if (s.endsWith('.T')) return '🇯🇵';
-  if (s.endsWith('.L')) return '🇬🇧';
-  if (s.endsWith('.DE')) return '🇩🇪';
-  if (s.endsWith('.PA')) return '🇫เร';
-  if (s.endsWith('.TO')) return '🇨🇦';
-  if (s.endsWith('.AX')) return '🇦🇺';
-  if (s.endsWith('.NS') || s.endsWith('.BO')) return '🇮🇳';
-  if (s.endsWith('.SG')) return '🇸🇬';
-  if (s.endsWith('.KL')) return '🇲🇾';
-  if (s.includes('-USD') || s.includes('-BTC')) return '₿';
-  return '🇺🇸';
-};
-
-const formatCurrency = (value: number, currency: string = 'USD') => {
-  try {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(value);
-  } catch (e) {
-    return `${currency} ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  }
-};
 
 export default function App() {
   const [symbol, setSymbol] = useState('AAPL');
@@ -130,11 +40,13 @@ export default function App() {
   const [stockData, setStockData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showVWAP, setShowVWAP] = useState(false);
+  const [showVWAP, setShowVWAP] = useState(true);
   const [showOBV, setShowOBV] = useState(false);
+  const [showVolume, setShowVolume] = useState(false);
+  const [chartType, setChartType] = useState<'line' | 'candlestick'>('line');
+  const [hoveredData, setHoveredData] = useState<any | null>(null);
+  const [resetTrigger, setResetTrigger] = useState(0);
   const [activeTab, setActiveTab] = useState<'chart' | 'portfolio'>('chart');
-  const [news, setNews] = useState<NewsItem[]>([]);
-  const [newsLoading, setNewsLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [marketFilter, setMarketFilter] = useState<'ALL' | 'TH' | 'US'>('ALL');
   const deferredSearchInput = useDeferredValue(searchInput);
@@ -151,6 +63,16 @@ export default function App() {
 
   const [simAdditionalShares, setSimAdditionalShares] = useState(0);
   const [marketPrices, setMarketPrices] = useState<{ [key: string]: { price: number, currency: string } }>({});
+  const [isDesktop, setIsDesktop] = useState(true);
+
+  useEffect(() => {
+    const checkSize = () => {
+      setIsDesktop(window.innerWidth >= 1024);
+    };
+    checkSize();
+    window.addEventListener('resize', checkSize);
+    return () => window.removeEventListener('resize', checkSize);
+  }, []);
 
   // Fetch transactions on mount
   useEffect(() => {
@@ -236,84 +158,9 @@ export default function App() {
 
   const processedData = useMemo(() => {
     if (!stockData?.data) return [];
-    
-    let cumulativeTPV = 0;
-    let cumulativeVolume = 0;
-    let currentOBV = 0;
-    
-    return stockData.data.map((point, i, arr) => {
-      // VWAP Calculation
-      const typicalPrice = (point.high + point.low + point.close) / 3;
-      cumulativeTPV += typicalPrice * point.volume;
-      cumulativeVolume += point.volume;
-      const vwap = cumulativeTPV / cumulativeVolume;
-      
-      // OBV Calculation
-      if (i > 0) {
-        if (point.close > arr[i-1].close) {
-          currentOBV += point.volume;
-        } else if (point.close < arr[i-1].close) {
-          currentOBV -= point.volume;
-        }
-      } else {
-        currentOBV = point.volume;
-      }
-      
-      return {
-        ...point,
-        vwap,
-        obv: currentOBV
-      };
-    });
+    const withMoneyFlow = calculateCompositeMoneyFlow(stockData.data);
+    return calculateVWAP(withMoneyFlow);
   }, [stockData]);
-
-  const fetchNews = async (targetSymbol: string, companyName?: string) => {
-    setNewsLoading(true);
-    setNews([]);
-    try {
-      // Try symbol first
-      let response = await fetch(`/api/news/${targetSymbol}`);
-      let newsData: NewsItem[] = [];
-      
-      if (response.ok) {
-        newsData = await response.json();
-      }
-
-      // Fallback to company name if no news found for symbol
-      if (newsData.length === 0 && companyName) {
-        const cleanName = companyName.split(' ')[0]; // Use first word of company name
-        response = await fetch(`/api/news/${encodeURIComponent(cleanName)}`);
-        if (response.ok) {
-          newsData = await response.json();
-        }
-      }
-
-      if (newsData.length > 0) {
-        // Translate news titles using Gemini
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-        const translatedNews = await Promise.all(newsData.map(async (item) => {
-          try {
-            const result = await ai.models.generateContent({
-              model: "gemini-3-flash-preview",
-              contents: `Translate this stock news headline to professional Thai: "${item.title}"`,
-              config: {
-                systemInstruction: "You are a professional financial translator. Provide only the Thai translation, no extra text. If the headline is already in Thai or impossible to translate, return the original.",
-              }
-            });
-            return { ...item, translatedTitle: result.text?.trim() || item.title };
-          } catch (e) {
-            console.error('Translation error:', e);
-            return { ...item, translatedTitle: item.title };
-          }
-        }));
-        setNews(translatedNews);
-      }
-    } catch (err) {
-      console.error('Failed to fetch news:', err);
-    } finally {
-      setNewsLoading(false);
-    }
-  };
 
   const fetchData = async (targetSymbol: string, targetInterval: string) => {
     setLoading(true);
@@ -326,9 +173,6 @@ export default function App() {
       }
       const data = await response.json();
       setStockData(data);
-      
-      const stockMeta = STOCK_LIST.find(s => s.symbol === targetSymbol);
-      fetchNews(targetSymbol, stockMeta?.name);
     } catch (err: any) {
       setError(err.message);
       setStockData(null);
@@ -413,86 +257,42 @@ export default function App() {
     return STOCK_LIST.find(s => s.symbol === symbol);
   }, [symbol]);
 
-  const lineGradientStops = useMemo(() => {
-    if (!stockData?.data || stockData.data.length === 0) return null;
-    const data = stockData.data;
-    return data.map((point, i) => {
-      const offset = (i / (data.length - 1)) * 100;
-      return (
-        <stop key={`stop-${i}`} offset={`${offset}%`} stopColor={point.volumeColor} />
-      );
-    });
-  }, [stockData]);
+  if (!isDesktop) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-8 text-center selection:bg-rose-500 selection:text-white">
+        <div className="max-w-md space-y-8">
+          <div className="relative mx-auto w-24 h-24">
+            <div className="absolute inset-0 bg-rose-500/20 rounded-3xl blur-2xl animate-pulse" />
+            <div className="relative w-24 h-24 bg-zinc-900 rounded-3xl flex items-center justify-center border border-zinc-800 shadow-2xl">
+              <Monitor className="w-12 h-12 text-white" />
+            </div>
+          </div>
+          
+          <div className="space-y-3">
+            <h1 className="text-3xl font-black text-white tracking-tight">Desktop Only</h1>
+            <p className="text-zinc-500 text-sm leading-relaxed font-medium">
+              TraderBook 99 สาธุ is a professional-grade analysis platform designed exclusively for large displays. 
+              Mobile and tablet access is currently restricted to ensure the best analytical experience.
+            </p>
+          </div>
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-white p-4 border border-zinc-200 shadow-xl rounded-lg">
-          <p className="text-xs font-mono text-zinc-500 mb-1">
-            {(() => {
-              const d = new Date(label);
-              if (isNaN(d.getTime())) return 'N/A';
-              return format(d, interval === '1h' ? 'MMM d, yyyy HH:mm' : 'MMM d, yyyy');
-            })()}
-          </p>
-          <p className="text-lg font-bold text-zinc-900">
-            {formatCurrency(payload[0].value, stockData?.currency)}
-          </p>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2 text-[10px] uppercase tracking-wider font-semibold text-zinc-400">
-            <span>Open</span>
-            <span className="text-zinc-700 text-right">{formatCurrency(payload[0].payload.open, stockData?.currency)}</span>
-            <span>High</span>
-            <span className="text-zinc-700 text-right">{formatCurrency(payload[0].payload.high, stockData?.currency)}</span>
-            <span>Low</span>
-            <span className="text-zinc-700 text-right">{formatCurrency(payload[0].payload.low, stockData?.currency)}</span>
-            <span>Volume</span>
-            <span className="text-zinc-700 text-right">{(payload[0].payload.volume / 1000000).toFixed(2)}M</span>
-            {payload[0].payload.pe !== null ? (
-              <>
-                <span>P/E Ratio</span>
-                <span className="text-zinc-700 text-right">{payload[0].payload.pe.toFixed(2)}x</span>
-              </>
-            ) : (
-              <>
-                <span>P/E Ratio</span>
-                <span className="text-zinc-700 text-right text-zinc-300">N/A</span>
-              </>
-            )}
-            {payload[0].payload.pb !== null ? (
-              <>
-                <span>P/B Ratio</span>
-                <span className="text-zinc-700 text-right">{payload[0].payload.pb.toFixed(2)}x</span>
-              </>
-            ) : (
-              <>
-                <span>P/B Ratio</span>
-                <span className="text-zinc-700 text-right text-zinc-300">N/A</span>
-              </>
-            )}
-            {showVWAP && payload[0].payload.vwap && (
-              <>
-                <span>VWAP</span>
-                <span className="text-blue-600 text-right">{formatCurrency(payload[0].payload.vwap, stockData?.currency)}</span>
-              </>
-            )}
-            {showOBV && payload[0].payload.obv !== undefined && (
-              <>
-                <span>OBV</span>
-                <span className="text-zinc-900 text-right">{(payload[0].payload.obv / 1000000).toFixed(2)}M</span>
-              </>
-            )}
+          <div className="pt-4 flex flex-col items-center gap-4">
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-900 rounded-full border border-zinc-800">
+              <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Analytical Workspace Required</span>
+            </div>
+            <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">Please switch to a desktop or laptop</p>
           </div>
         </div>
-      );
-    }
-    return null;
-  };
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-zinc-900 font-sans selection:bg-zinc-900 selection:text-white">
       {/* Header */}
       <header className="border-b border-zinc-200 bg-white sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-zinc-900 rounded-xl flex items-center justify-center">
               <Wallet className="text-white w-6 h-6" />
@@ -581,7 +381,7 @@ export default function App() {
           </form>
 
           <div className="flex items-center gap-4">
-            <div className="flex bg-zinc-100 p-1 rounded-lg border border-zinc-200 gap-1 mr-4">
+            <div className="flex bg-zinc-100 p-1 rounded-lg border border-zinc-200 gap-1">
               <button
                 onClick={() => setActiveTab('chart')}
                 className={cn(
@@ -605,53 +405,11 @@ export default function App() {
                 <Wallet className="w-3.5 h-3.5" /> Portfolio
               </button>
             </div>
-
-            <div className="flex bg-zinc-100 p-1 rounded-lg border border-zinc-200 gap-1">
-              <button
-                onClick={() => setShowVWAP(!showVWAP)}
-                className={cn(
-                  "px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all",
-                  showVWAP 
-                    ? "bg-blue-600 text-white shadow-sm" 
-                    : "text-zinc-500 hover:text-zinc-900"
-                )}
-              >
-                VWAP
-              </button>
-              <button
-                onClick={() => setShowOBV(!showOBV)}
-                className={cn(
-                  "px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all",
-                  showOBV 
-                    ? "bg-zinc-900 text-white shadow-sm" 
-                    : "text-zinc-500 hover:text-zinc-900"
-                )}
-              >
-                OBV
-              </button>
-            </div>
-
-            <div className="hidden sm:flex bg-zinc-100 p-1 rounded-lg border border-zinc-200">
-              {INTERVALS.map((int) => (
-                <button
-                  key={int.value}
-                  onClick={() => setInterval(int.value)}
-                  className={cn(
-                    "px-3 py-1.5 text-xs font-semibold rounded-md transition-all",
-                    interval === int.value 
-                      ? "bg-white text-zinc-900 shadow-sm" 
-                      : "text-zinc-500 hover:text-zinc-900"
-                  )}
-                >
-                  {int.label}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {error ? (
           <div className="bg-red-50 border border-red-100 rounded-2xl p-8 flex flex-col items-center justify-center text-center">
             <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
@@ -665,286 +423,127 @@ export default function App() {
             </button>
           </div>
         ) : activeTab === 'chart' ? (
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-            {/* Main Chart Area */}
-            <div className="lg:col-span-3 space-y-8">
-              {/* Asset Info */}
-              <div className="bg-white rounded-2xl border border-zinc-200 p-6 flex flex-wrap items-end justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="text-5xl">{getFlag(symbol)}</div>
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-bold uppercase tracking-widest text-zinc-400">Market Data</span>
-                      <ChevronRight className="w-3 h-3 text-zinc-300" />
-                      <span className="text-xs font-bold uppercase tracking-widest text-zinc-900">{symbol}</span>
-                    </div>
-                    <div className="flex items-baseline gap-4">
-                      <div className="flex flex-col">
-                        <h2 className="text-4xl font-black tracking-tighter">{symbol}</h2>
-                        {currentStockMeta && (
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-sm font-bold text-zinc-600">{currentStockMeta.name}</span>
-                            <span className="text-[10px] px-1.5 py-0.5 bg-zinc-100 text-zinc-500 rounded font-bold uppercase tracking-wider">{currentStockMeta.sector}</span>
-                          </div>
-                        )}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            {/* Legend Area (Left) */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Asset Quick View (Moved from Right Sidebar) */}
+              {currentSummary.totalShares > 0 && (
+                <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
+                  <div className="p-4 border-b border-zinc-100 bg-zinc-50/50 flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <Wallet className="w-3.5 h-3.5 text-zinc-900" />
+                        <h3 className="text-[10px] font-bold uppercase tracking-widest">Holdings</h3>
                       </div>
-                      {latestPrice && (
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-3xl font-bold">{formatCurrency(latestPrice, stockData?.currency)}</span>
-                          <span className={cn(
-                            "text-sm font-bold flex items-center gap-1",
-                            priceChange >= 0 ? "text-emerald-600" : "text-rose-600"
-                          )}>
-                            {priceChange >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                            {Math.abs(priceChange).toFixed(2)} ({percentChange.toFixed(2)}%)
-                          </span>
-                        </div>
-                      )}
+                      <p className="text-[9px] text-zinc-400 font-bold uppercase">{symbol}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={cn(
+                        "text-xs font-black",
+                        latestPrice && latestPrice >= currentSummary.avgCost ? "text-emerald-600" : "text-rose-600"
+                      )}>
+                        {latestPrice ? (((latestPrice - currentSummary.avgCost) / currentSummary.avgCost) * 100).toFixed(2) : 0}%
+                      </p>
                     </div>
                   </div>
-                </div>
-                
-                <div className="flex gap-8 border-l border-zinc-100 pl-8">
-                  <div className="text-center">
-                    <p className="text-[10px] uppercase font-bold text-zinc-400 mb-1">Interval</p>
-                    <p className="text-sm font-bold flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-zinc-400" />
-                      {INTERVALS.find(i => i.value === interval)?.label}
-                    </p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-[10px] uppercase font-bold text-zinc-400 mb-1">Since</p>
-                    <p className="text-sm font-bold flex items-center gap-1.5">
-                      <Calendar className="w-3.5 h-3.5 text-zinc-400" />
-                      {interval === '1h' ? 'Last 2 Years' : 'Jan 1, 2020'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Chart */}
-              <div className="bg-white rounded-2xl border border-zinc-200 p-6 h-[500px] relative overflow-hidden group">
-                {loading && (
-                  <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] z-20 flex items-center justify-center">
-                    <div className="flex flex-col items-center gap-3">
-                      <RefreshCcw className="w-8 h-8 text-zinc-900 animate-spin" />
-                      <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">Syncing Data...</p>
+                  
+                  <div className="p-4 grid grid-cols-2 gap-3">
+                    <div className="bg-zinc-50 p-2.5 rounded-xl border border-zinc-100">
+                      <p className="text-[9px] uppercase font-bold text-zinc-400 mb-0.5">Shares</p>
+                      <p className="text-xs font-bold text-zinc-900">{currentSummary.totalShares}</p>
                     </div>
-                  </div>
-                )}
-                
-                <div className="h-full w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={processedData}>
-                      <defs>
-                        <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#18181b" stopOpacity={0.1}/>
-                          <stop offset="95%" stopColor="#18181b" stopOpacity={0}/>
-                        </linearGradient>
-                        <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                          {lineGradientStops}
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f1f1" />
-                      <XAxis 
-                        dataKey="date" 
-                        hide 
-                      />
-                      <YAxis 
-                        domain={['auto', 'auto']}
-                        orientation="right"
-                        tick={{ fontSize: 10, fontWeight: 600, fill: '#a1a1aa' }}
-                        axisLine={false}
-                        tickLine={false}
-                        tickFormatter={(val) => `$${val.toLocaleString()}`}
-                      />
-                      <Tooltip content={<CustomTooltip />} />
-                      <Area 
-                        type="monotone" 
-                        dataKey="close" 
-                        stroke="url(#lineGradient)" 
-                        strokeWidth={2}
-                        fillOpacity={1} 
-                        fill="url(#colorPrice)" 
-                        animationDuration={1500}
-                      />
-                      {showVWAP && (
-                        <Line 
-                          type="monotone" 
-                          dataKey="vwap" 
-                          stroke="#2563eb" 
-                          strokeWidth={2} 
-                          dot={false} 
-                          animationDuration={1500}
-                        />
-                      )}
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* OBV Chart */}
-              {showOBV && (
-                <div className="bg-white rounded-2xl border border-zinc-200 p-6 h-[200px]">
-                  <div className="flex items-center gap-2 mb-4">
-                    <TrendingUp className="w-4 h-4 text-zinc-400" />
-                    <h3 className="text-xs font-bold uppercase tracking-widest">On-Balance Volume (OBV)</h3>
-                  </div>
-                  <div className="h-[120px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={processedData}>
-                        <defs>
-                          <linearGradient id="colorOBV" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#18181b" stopOpacity={0.05}/>
-                            <stop offset="95%" stopColor="#18181b" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f1f1" />
-                        <XAxis dataKey="date" hide />
-                        <YAxis hide domain={['auto', 'auto']} />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Area 
-                          type="monotone" 
-                          dataKey="obv" 
-                          stroke="#18181b" 
-                          strokeWidth={1.5} 
-                          fill="url(#colorOBV)"
-                          animationDuration={1500}
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
+                    <div className="bg-zinc-50 p-2.5 rounded-xl border border-zinc-100">
+                      <p className="text-[9px] uppercase font-bold text-zinc-400 mb-0.5">Avg Cost</p>
+                      <p className="text-xs font-bold text-zinc-900">{formatCurrency(currentSummary.avgCost, stockData?.currency)}</p>
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* Volume Chart */}
-              <div className="bg-white rounded-2xl border border-zinc-200 p-6 h-[200px]">
-                <div className="flex items-center gap-2 mb-4">
-                  <BarChart3 className="w-4 h-4 text-zinc-400" />
-                  <h3 className="text-xs font-bold uppercase tracking-widest">Trading Volume</h3>
-                </div>
-                <div className="h-[120px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={processedData}>
-                      <Bar 
-                        dataKey="volume" 
-                        radius={[2, 2, 0, 0]}
-                      >
-                        {processedData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.volumeColor} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+              <Legend />
+              <StockNotebook 
+                symbol={symbol} 
+                currentPrice={latestPrice || 0} 
+                currency={stockData?.currency} 
+              />
+            </div>
+
+            {/* Main Chart Area (Wide) */}
+            <div className="lg:col-span-7 space-y-6">
+              <AssetInfo 
+                symbol={symbol}
+                latestPrice={latestPrice}
+                priceChange={priceChange}
+                percentChange={percentChange}
+                currency={stockData?.currency}
+                interval={interval}
+              />
+
+              <ChartControls 
+                interval={interval}
+                setInterval={setInterval}
+                chartType={chartType}
+                setChartType={setChartType}
+                showVWAP={showVWAP}
+                setShowVWAP={setShowVWAP}
+                showOBV={showOBV}
+                setShowOBV={setShowOBV}
+                showVolume={showVolume}
+                setShowVolume={setShowVolume}
+                onReset={() => setResetTrigger(prev => prev + 1)}
+              />
+
+              {/* Chart */}
+              <div className="bg-white rounded-2xl border border-zinc-200 p-6 h-[600px] relative overflow-hidden group">
+                {loading && (
+                  <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] z-20 flex items-center justify-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <RefreshCcw className="w-8 h-8 text-zinc-900 animate-spin" />
+                      <p className="text-sm font-bold text-zinc-900 uppercase tracking-widest">Updating Market Data...</p>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="h-full w-full relative">
+                  <TradingChart 
+                    data={processedData} 
+                    showVWAP={showVWAP} 
+                    showOBV={showOBV} 
+                    showVolume={showVolume}
+                    chartType={chartType}
+                    onHover={setHoveredData}
+                    resetTrigger={resetTrigger}
+                  />
                 </div>
               </div>
             </div>
 
-            {/* Sidebar Stats */}
-            <div className="space-y-6">
-              <div className="bg-zinc-900 rounded-2xl p-6 text-white shadow-xl shadow-zinc-200">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-4">Market Summary</h3>
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-[10px] uppercase font-bold text-zinc-500 mb-1">Current Price</p>
-                    <p className="text-2xl font-bold">{formatCurrency(latestPrice || 0, stockData?.currency)}</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-[10px] uppercase font-bold text-zinc-500 mb-1">24h High</p>
-                      <p className="text-sm font-bold">{formatCurrency(Math.max(...(stockData?.data.slice(-24).map(d => d.high) || [0])), stockData?.currency)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] uppercase font-bold text-zinc-500 mb-1">24h Low</p>
-                      <p className="text-sm font-bold">{formatCurrency(Math.min(...(stockData?.data.slice(-24).map(d => d.low) || [0])), stockData?.currency)}</p>
-                    </div>
-                  </div>
-                  <div className="pt-4 border-t border-zinc-800">
-                    <p className="text-[10px] uppercase font-bold text-zinc-500 mb-2">Popular Symbols</p>
-                    <div className="flex flex-wrap gap-2">
-                      {['BTC-USD', 'ETH-USD', 'TSLA', 'NVDA', 'MSFT'].map(s => (
-                        <button 
-                          key={s}
-                          onClick={() => {
-                            setSymbol(s);
-                            setSearchInput(s);
-                          }}
-                          className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 rounded text-[10px] font-bold transition-colors"
-                        >
-                          {s}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
+            {/* Sidebar Stats (Right) */}
+            <div className="lg:col-span-3 space-y-6">
+              {/* Spacer to align MarketDetails with Chart (accounting for AssetInfo + ChartControls) */}
+              <div className="hidden lg:block h-[140px]" />
 
+              <MarketDetails 
+                data={hoveredData}
+                latestData={processedData[processedData.length - 1]}
+                currency={stockData?.currency}
+              />
+
+              {/* Buy Strategy */}
               <div className="bg-white rounded-2xl border border-zinc-200 p-6">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-4 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span>Latest News</span>
-                    {news.length > 0 && !newsLoading && (
-                      <button 
-                        onClick={() => {
-                          const stockMeta = STOCK_LIST.find(s => s.symbol === symbol);
-                          fetchNews(symbol, stockMeta?.name);
-                        }}
-                        className="p-1 hover:bg-zinc-100 rounded-full transition-colors"
-                        title="Refresh news"
-                      >
-                        <RefreshCcw className={cn("w-3 h-3 text-zinc-400", newsLoading && "animate-spin")} />
-                      </button>
-                    )}
-                  </div>
-                  <span className="text-[10px] text-zinc-300 font-medium">Translated by AI</span>
+                <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-900 mb-4 flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4" />
+                  <span>Buy Strategy</span>
                 </h3>
                 <div className="space-y-4">
-                  {newsLoading ? (
-                    <div className="space-y-3">
-                      {[1, 2, 3].map(i => (
-                        <div key={i} className="animate-pulse space-y-2">
-                          <div className="h-3 bg-zinc-100 rounded w-full" />
-                          <div className="h-2 bg-zinc-50 rounded w-2/3" />
-                        </div>
-                      ))}
-                    </div>
-                  ) : news.length === 0 ? (
-                    <div className="text-center py-6">
-                      <p className="text-xs text-zinc-400 italic mb-3">ไม่พบข่าวสารสำหรับหุ้นตัวนี้ในขณะนี้</p>
-                      <button 
-                        onClick={() => {
-                          const stockMeta = STOCK_LIST.find(s => s.symbol === symbol);
-                          fetchNews(symbol, stockMeta?.name);
-                        }}
-                        className="text-[10px] font-bold uppercase tracking-widest text-zinc-900 hover:underline flex items-center gap-1 mx-auto"
-                      >
-                        <RefreshCcw className="w-3 h-3" /> ลองโหลดใหม่อีกครั้ง
-                      </button>
-                    </div>
-                  ) : news.map((item) => (
-                    <div key={item.uuid} className="group">
-                      <a 
-                        href={item.link} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="block space-y-1"
-                      >
-                        <p className="text-xs font-bold text-zinc-900 group-hover:text-blue-600 transition-colors leading-snug">
-                          {item.translatedTitle || item.title}
-                        </p>
-                        <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                          <span>{item.publisher}</span>
-                          <span>
-                            {(() => {
-                              const d = new Date(item.providerPublishTime * 1000);
-                              if (isNaN(d.getTime())) return 'N/A';
-                              return format(d, 'MMM d');
-                            })()}
-                          </span>
-                        </div>
-                      </a>
-                    </div>
-                  ))}
+                  <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100">
+                    <p className="text-[11px] font-bold text-emerald-800 uppercase mb-1">Entry Conditions:</p>
+                    <ul className="text-[10px] text-emerald-700 space-y-1 list-disc pl-4">
+                      <li>Price above <b>VWAP</b> (Support)</li>
+                      <li>VWAP color is <b>Leading (Dark Green)</b></li>
+                      <li>Money Flow Score &gt; 50</li>
+                    </ul>
+                  </div>
                 </div>
               </div>
 
@@ -962,108 +561,6 @@ export default function App() {
                     <span className="text-xs font-semibold text-zinc-500">Source</span>
                     <span className="text-xs font-bold">Yahoo Finance</span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-zinc-500">Region</span>
-                    <span className="text-xs font-bold">Global</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-zinc-50 rounded-2xl border border-dashed border-zinc-200 p-6">
-                <p className="text-[10px] leading-relaxed text-zinc-400 font-medium">
-                  Data provided for informational purposes only. Past performance is not indicative of future results. All symbols are fetched via Yahoo Finance API.
-                </p>
-              </div>
-
-              {/* Portfolio & DCA Simulator */}
-              <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden">
-                <div className="p-6 border-b border-zinc-100 bg-zinc-50/50 flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <Wallet className="w-4 h-4 text-zinc-900" />
-                      <h3 className="text-xs font-bold uppercase tracking-widest">Quick View</h3>
-                    </div>
-                    <p className="text-[10px] text-zinc-400 font-medium">{symbol} Holdings</p>
-                  </div>
-                  {currentSummary.totalShares > 0 && (
-                    <div className="text-right">
-                      <p className="text-[10px] font-bold text-emerald-600 uppercase">Profit/Loss</p>
-                      <p className={cn(
-                        "text-xs font-bold",
-                        latestPrice && latestPrice >= currentSummary.avgCost ? "text-emerald-600" : "text-rose-600"
-                      )}>
-                        {latestPrice ? (((latestPrice - currentSummary.avgCost) / currentSummary.avgCost) * 100).toFixed(2) : 0}%
-                      </p>
-                    </div>
-                  )}
-                </div>
-                
-                <div className="p-6 space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-zinc-50 p-3 rounded-xl border border-zinc-100">
-                      <p className="text-[10px] uppercase font-bold text-zinc-400 mb-1">Shares</p>
-                      <p className="text-sm font-bold text-zinc-900">{currentSummary.totalShares}</p>
-                    </div>
-                    <div className="bg-zinc-50 p-3 rounded-xl border border-zinc-100">
-                      <p className="text-[10px] uppercase font-bold text-zinc-400 mb-1">Avg Cost</p>
-                      <p className="text-sm font-bold text-zinc-900">{formatCurrency(currentSummary.avgCost, stockData?.currency)}</p>
-                    </div>
-                  </div>
-
-                  {latestPrice && (
-                    <div className="pt-4 border-t border-zinc-100">
-                      <div className="flex items-center gap-2 mb-4">
-                        <Calculator className="w-4 h-4 text-zinc-400" />
-                        <h3 className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">DCA Simulator</h3>
-                      </div>
-                      
-                      <div className="space-y-4">
-                        <div>
-                          <div className="flex justify-between mb-2">
-                            <span className="text-[10px] font-bold text-zinc-500 uppercase">Buy More</span>
-                            <span className="text-xs font-bold text-zinc-900">+{simAdditionalShares} Shares</span>
-                          </div>
-                          <input 
-                            type="range" 
-                            min="0" 
-                            max="1000" 
-                            step="1"
-                            value={simAdditionalShares}
-                            onChange={(e) => setSimAdditionalShares(Number(e.target.value))}
-                            className="w-full h-1.5 bg-zinc-100 rounded-lg appearance-none cursor-pointer accent-zinc-900"
-                          />
-                        </div>
-
-                        <div className="bg-zinc-900 rounded-xl p-4 text-white">
-                          <div className="flex justify-between items-center mb-1">
-                            <span className="text-[10px] font-bold text-zinc-500 uppercase">New Average</span>
-                            <span className="text-xs font-bold text-emerald-400">
-                              {formatCurrency(((currentSummary.totalShares * currentSummary.avgCost + simAdditionalShares * latestPrice) / (currentSummary.totalShares + simAdditionalShares || 1)), stockData?.currency)}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-[10px] font-bold text-zinc-500 uppercase">Total Value</span>
-                            <span className="text-xs font-bold">
-                              {formatCurrency(((currentSummary.totalShares + simAdditionalShares) * latestPrice), stockData?.currency)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <p className="text-[10px] font-bold text-zinc-400 uppercase text-center border-b border-zinc-100 pb-2">Quick Simulation Table</p>
-                          {[1, 5, 10, 50, 100].map(amount => {
-                            const newAvg = (currentSummary.totalShares * currentSummary.avgCost + amount * latestPrice) / (currentSummary.totalShares + amount || 1);
-                            return (
-                              <div key={amount} className="flex justify-between items-center text-[11px] py-1">
-                                <span className="text-zinc-500 font-medium">Buy +{amount} shares</span>
-                                <span className="font-bold text-zinc-900">New Avg: {formatCurrency(newAvg, stockData?.currency)}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
@@ -1268,6 +765,68 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+
+                {/* DCA Simulator (Moved from Chart) */}
+                {(marketPrices[symbol]?.price || latestPrice) && currentSummary.totalShares > 0 && (
+                  <div className="bg-white rounded-2xl border border-zinc-200 p-8">
+                    <div className="flex items-center gap-2 mb-6">
+                      <Calculator className="w-5 h-5 text-zinc-900" />
+                      <h2 className="text-xl font-black tracking-tight">DCA Simulator</h2>
+                    </div>
+                    
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between p-4 bg-zinc-50 rounded-xl border border-zinc-100">
+                        <div>
+                          <p className="text-[10px] uppercase font-bold text-zinc-400 mb-1">Market Price</p>
+                          <p className="text-lg font-black text-zinc-900">
+                            {formatCurrency(marketPrices[symbol]?.price || latestPrice || 0, marketPrices[symbol]?.currency || stockData?.currency)}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] uppercase font-bold text-zinc-400 mb-1">Current Avg</p>
+                          <p className="text-lg font-black text-zinc-500">
+                            {formatCurrency(currentSummary.avgCost, marketPrices[symbol]?.currency || stockData?.currency)}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between mb-3">
+                          <span className="text-[10px] font-bold text-zinc-500 uppercase">Buy More Shares</span>
+                          <span className="text-sm font-black text-zinc-900">+{simAdditionalShares}</span>
+                        </div>
+                        <input 
+                          type="range" 
+                          min="0" 
+                          max="2000" 
+                          step="1"
+                          value={simAdditionalShares}
+                          onChange={(e) => setSimAdditionalShares(Number(e.target.value))}
+                          className="w-full h-2 bg-zinc-100 rounded-lg appearance-none cursor-pointer accent-zinc-900"
+                        />
+                      </div>
+
+                      <div className="bg-zinc-900 rounded-2xl p-6 text-white shadow-lg shadow-zinc-200">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">New Average Cost</span>
+                          <span className={cn(
+                            "text-xl font-black",
+                            ((currentSummary.totalShares * currentSummary.avgCost + simAdditionalShares * (marketPrices[symbol]?.price || latestPrice || 0)) / (currentSummary.totalShares + simAdditionalShares)) < currentSummary.avgCost 
+                              ? "text-emerald-400" 
+                              : "text-white"
+                          )}>
+                            {formatCurrency(((currentSummary.totalShares * currentSummary.avgCost + simAdditionalShares * (marketPrices[symbol]?.price || latestPrice || 0)) / (currentSummary.totalShares + simAdditionalShares || 1)), marketPrices[symbol]?.currency || stockData?.currency)}
+                          </span>
+                        </div>
+                        <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest">
+                          {((currentSummary.totalShares * currentSummary.avgCost + simAdditionalShares * (marketPrices[symbol]?.price || latestPrice || 0)) / (currentSummary.totalShares + simAdditionalShares)) < currentSummary.avgCost 
+                            ? "Lowering your cost basis" 
+                            : "Increasing your cost basis"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="bg-white rounded-2xl border border-zinc-200 p-6">
                   <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-4">Portfolio Tips</h3>

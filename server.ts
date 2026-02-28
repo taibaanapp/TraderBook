@@ -23,6 +23,14 @@ db.exec(`
     price REAL,
     date TEXT
   );
+  CREATE TABLE IF NOT EXISTS stock_notes (
+    id TEXT PRIMARY KEY,
+    symbol TEXT,
+    userId TEXT,
+    price REAL,
+    content TEXT,
+    date TEXT
+  );
 `);
 
 const CACHE_TTL = {
@@ -69,6 +77,39 @@ async function startServer() {
     }
   });
 
+  // Notes API
+  app.get("/api/notes/:symbol", (req, res) => {
+    const { symbol } = req.params;
+    try {
+      const notes = db.prepare('SELECT * FROM stock_notes WHERE symbol = ? ORDER BY date DESC').all(symbol);
+      res.json(notes);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch notes' });
+    }
+  });
+
+  app.post("/api/notes", (req, res) => {
+    const { id, symbol, userId, price, content, date } = req.body;
+    try {
+      db.prepare('INSERT INTO stock_notes (id, symbol, userId, price, content, date) VALUES (?, ?, ?, ?, ?, ?)').run(
+        id, symbol, userId, price, content, date
+      );
+      res.status(201).json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to save note' });
+    }
+  });
+
+  app.delete("/api/notes/:id", (req, res) => {
+    const { id } = req.params;
+    try {
+      db.prepare('DELETE FROM stock_notes WHERE id = ?').run(id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to delete note' });
+    }
+  });
+
   app.get("/api/news/:symbol", async (req, res) => {
     const { symbol } = req.params;
     try {
@@ -110,14 +151,28 @@ async function startServer() {
         interval: interval as any,
       };
 
-      // Fetch chart data and current fundamentals in parallel
-      const [chartResult, quoteResult] = await Promise.all([
+      // Determine Index Symbol
+      const indexSymbol = symbol.endsWith('.BK') ? '^SET.BK' : '^GSPC';
+
+      // Fetch chart data, index data, and current fundamentals in parallel
+      const [chartResult, indexResult, quoteResult] = await Promise.all([
         yahooFinance.chart(symbol, queryOptions) as Promise<any>,
+        yahooFinance.chart(indexSymbol, queryOptions).catch(() => null) as Promise<any>,
         yahooFinance.quote(symbol).catch(() => null) as Promise<any>
       ]);
       
       if (!chartResult || !chartResult.quotes) {
         return res.status(404).json({ error: 'No data found' });
+      }
+
+      // Map index data by date for easy lookup
+      const indexMap = new Map();
+      if (indexResult && indexResult.quotes) {
+        indexResult.quotes.forEach((q: any) => {
+          if (q.date && q.close) {
+            indexMap.set(new Date(q.date).toISOString().split('T')[0], q.close);
+          }
+        });
       }
 
       // Try multiple fields for EPS and Book Value as they vary by asset type
@@ -134,17 +189,29 @@ async function startServer() {
       // Format data for Recharts
       const chartData = chartResult.quotes.map((quote, index, array) => {
         const close = quote.close;
+        const dateStr = new Date(quote.date).toISOString().split('T')[0];
+        const indexClose = indexMap.get(dateStr);
         
-        // Calculate average of previous 5 volumes
-        let volumeColor = '#18181b'; // Default: black (zinc-900)
-        if (index >= 5) {
-          const prev5 = array.slice(index - 5, index);
-          const avgVolume = prev5.reduce((sum, q) => sum + (q.volume || 0), 0) / 5;
-          if (quote.volume > avgVolume) {
-            volumeColor = '#10b981'; // Green (emerald-500)
-          } else if (quote.volume < avgVolume) {
-            volumeColor = '#f43f5e'; // Red (rose-500)
-          }
+        // Calculate Volume MA 20
+        let volumeMA20 = 0;
+        if (index >= 19) {
+          const prev20 = array.slice(index - 19, index + 1);
+          volumeMA20 = prev20.reduce((sum, q) => sum + (q.volume || 0), 0) / 20;
+        } else if (index > 0) {
+          const prevAll = array.slice(0, index + 1);
+          volumeMA20 = prevAll.reduce((sum, q) => sum + (q.volume || 0), 0) / (index + 1);
+        }
+
+        const volumeRatio = volumeMA20 > 0 ? quote.volume / volumeMA20 : 1;
+
+        // Volume Flow Color Logic (for Volume Bars)
+        let volumeColor = '#d1d5db'; // Default: gray-300
+        if (volumeRatio > 1.5) {
+          volumeColor = '#064e3b'; // Deep Green
+        } else if (volumeRatio > 1.2) {
+          volumeColor = '#059669'; // Active Green
+        } else if (volumeRatio < 0.5) {
+          volumeColor = '#dc2626'; // Dry Red
         }
 
         return {
@@ -154,7 +221,10 @@ async function startServer() {
           low: quote.low,
           close: close,
           volume: quote.volume,
+          volumeMA20: volumeMA20,
+          volumeRatio: volumeRatio,
           volumeColor: volumeColor,
+          indexClose: indexClose || null,
           // Calculate dynamic PE/PB based on current fundamentals
           pe: eps && close ? (close / eps) : null,
           pb: bookValue && close ? (close / bookValue) : null
