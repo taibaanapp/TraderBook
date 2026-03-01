@@ -28,6 +28,7 @@ import { FinancialIndicators } from './components/FinancialIndicators';
 import { Logo } from './components/Logo';
 import { calculateCompositeMoneyFlow, calculateVWAP, calculateEMA } from './services/indicatorService';
 import { simulateGoldenCross } from './services/simulationService';
+import { getStockData, saveStockData } from './services/storageService';
 import { getFlag, formatCurrency } from './utils/formatters';
 import { cn } from './utils/cn';
 import { StockData, ApiResponse, Transaction, PortfolioSummary } from './types';
@@ -248,19 +249,11 @@ export default function App() {
   }, [stockData, isSimulationMode, simulationRate, interval]);
 
   const fetchData = async (targetSymbol: string, targetInterval: string, forceRefresh = false) => {
-    const cacheKey = `stock_data_${targetSymbol}_${targetInterval}`;
-    const cached = localStorage.getItem(cacheKey);
-    
-    if (!forceRefresh && cached) {
-      try {
-        const { data, timestamp } = JSON.parse(cached);
-        const isExpired = Date.now() - timestamp > 24 * 60 * 60 * 1000;
-        if (!isExpired) {
-          setStockData(data);
-          return;
-        }
-      } catch (e) {
-        console.error('Failed to parse cached data', e);
+    if (!forceRefresh) {
+      const cached = await getStockData(targetSymbol, targetInterval);
+      if (cached) {
+        setStockData(cached);
+        return;
       }
     }
 
@@ -275,11 +268,8 @@ export default function App() {
       const data = await response.json();
       setStockData(data);
       
-      // Cache the result
-      localStorage.setItem(cacheKey, JSON.stringify({
-        data,
-        timestamp: Date.now()
-      }));
+      // Cache the result using IndexedDB and pruning
+      await saveStockData(targetSymbol, targetInterval, data);
     } catch (err: any) {
       setError(err.message);
       setStockData(null);
