@@ -31,12 +31,18 @@ db.exec(`
     content TEXT,
     date TEXT
   );
+  CREATE TABLE IF NOT EXISTS financial_cache (
+    symbol TEXT PRIMARY KEY,
+    data TEXT,
+    timestamp INTEGER
+  );
 `);
 
 const CACHE_TTL = {
   '1h': 15 * 60 * 1000, // 15 minutes
   '1d': 60 * 60 * 1000, // 1 hour
   '1wk': 24 * 60 * 60 * 1000, // 1 day
+  'financials': 7 * 24 * 60 * 60 * 1000, // 7 days
 };
 
 async function startServer() {
@@ -123,6 +129,148 @@ async function startServer() {
     }
   });
 
+  app.get("/api/financials/:symbol", async (req, res) => {
+    const { symbol } = req.params;
+    
+    try {
+      // Check cache
+      const cached = db.prepare('SELECT data, timestamp FROM financial_cache WHERE symbol = ?').get(symbol) as any;
+      if (cached && (Date.now() - cached.timestamp < CACHE_TTL.financials)) {
+        return res.json(JSON.parse(cached.data));
+      }
+
+      const modules = [
+        'incomeStatementHistory',
+        'balanceSheetHistory',
+        'cashflowStatementHistory',
+        'incomeStatementHistoryQuarterly',
+        'balanceSheetHistoryQuarterly',
+        'cashflowStatementHistoryQuarterly',
+        'defaultKeyStatistics',
+        'financialData',
+        'recommendationTrend'
+      ];
+
+      let result;
+      try {
+        result = await yahooFinance.quoteSummary(symbol, { modules: modules as any });
+      } catch (e: any) {
+        console.error(`QuoteSummary Error for ${symbol}:`, e.message);
+        // If it's a "not found" error, return 404
+        if (e.message?.includes('not found') || e.message?.includes('delisted')) {
+          return res.status(404).json({ error: `Symbol ${symbol} not found or delisted` });
+        }
+        throw e;
+      }
+      
+      if (!result) {
+        return res.status(404).json({ error: 'No financial data found' });
+      }
+
+      // Process and simplify the data for the frontend
+      const processStatements = (statements: any[]) => {
+        return statements?.map(s => ({
+          date: s.endDate,
+          revenue: s.totalRevenue,
+          netIncome: s.netIncome,
+          ebit: s.ebit,
+          totalAssets: s.totalAssets,
+          totalLiabilities: s.totalLiabilitiesNetMinorityInterest || s.totalLiabilities,
+          totalEquity: s.totalStockholderEquity,
+          currentAssets: s.totalCurrentAssets,
+          currentLiabilities: s.totalCurrentLiabilities,
+          cash: s.cash || s.cashAndCashEquivalents,
+          inventory: s.inventory,
+          totalDebt: s.totalDebt,
+          operatingCashflow: s.totalCashFromOperatingActivities,
+          freeCashflow: s.freeCashFlow
+        })) || [];
+      };
+
+      const financials = {
+        annual: processStatements(result.incomeStatementHistory?.incomeStatementHistory || []),
+        quarterly: processStatements(result.incomeStatementHistoryQuarterly?.incomeStatementHistory || []),
+        annualBS: result.balanceSheetHistory?.balanceSheetStatements || [],
+        quarterlyBS: result.balanceSheetHistoryQuarterly?.balanceSheetStatements || [],
+        stats: {
+          pe: result.defaultKeyStatistics?.trailingPE || result.financialData?.trailingPE,
+          forwardPE: result.defaultKeyStatistics?.forwardPE,
+          pb: result.defaultKeyStatistics?.priceToBook,
+          roe: result.financialData?.returnOnEquity,
+          roa: result.financialData?.returnOnAssets,
+          profitMargin: result.financialData?.profitMargins,
+          operatingMargin: result.financialData?.operatingMargins,
+          currentRatio: result.financialData?.currentRatio,
+          quickRatio: result.financialData?.quickRatio,
+          debtToEquity: result.financialData?.debtToEquity,
+          revenueGrowth: result.financialData?.revenueGrowth,
+          earningsGrowth: result.financialData?.earningsGrowth,
+          dividendYield: result.financialData?.dividendYield,
+          payoutRatio: result.financialData?.payoutRatio,
+          targetPrice: result.financialData?.targetMeanPrice,
+          recommendation: result.financialData?.recommendationKey
+        }
+      };
+
+      // Combine Income Statement and Balance Sheet data
+      const combineData = (is: any[], bs: any[]) => {
+        return is.map((item, idx) => {
+          const bsItem = bs[idx] || {};
+          return {
+            ...item,
+            totalAssets: bsItem.totalAssets,
+            totalLiabilities: bsItem.totalLiabilitiesNetMinorityInterest || bsItem.totalLiabilities,
+            totalEquity: bsItem.totalStockholderEquity,
+            currentAssets: bsItem.totalCurrentAssets,
+            currentLiabilities: bsItem.totalCurrentLiabilities,
+            cash: bsItem.cash || bsItem.cashAndCashEquivalents,
+            inventory: bsItem.inventory,
+            totalDebt: bsItem.totalDebt
+          };
+        });
+      };
+
+      const annualCombined = combineData(financials.annual, financials.annualBS);
+      
+      // Calculate Fair Value (Graham Number)
+      // Graham Number = sqrt(22.5 * EPS * BookValue)
+      const eps = result.defaultKeyStatistics?.trailingEps || result.financialData?.trailingEps;
+      const bvps = result.defaultKeyStatistics?.bookValue;
+      let grahamNumber = null;
+      if (eps > 0 && bvps > 0) {
+        grahamNumber = Math.sqrt(22.5 * eps * bvps);
+      }
+
+      // Fallback Fair Value based on PE (Price = EPS * 15)
+      const peFairValue = eps > 0 ? eps * 15 : null;
+
+      const finalData = {
+        symbol,
+        annual: annualCombined,
+        quarterly: combineData(financials.quarterly, financials.quarterlyBS),
+        stats: financials.stats,
+        valuation: {
+          grahamNumber,
+          peFairValue,
+          targetPrice: financials.stats.targetPrice
+        },
+        timestamp: Date.now()
+      };
+
+      // Save to cache
+      db.prepare('INSERT OR REPLACE INTO financial_cache (symbol, data, timestamp) VALUES (?, ?, ?)').run(
+        symbol,
+        JSON.stringify(finalData),
+        Date.now()
+      );
+
+      res.json(finalData);
+    } catch (error: any) {
+      console.error('Financials Fetch Error:', error.message);
+      res.status(500).json({ error: 'Failed to fetch financial data' });
+    }
+  });
+
   app.get("/api/stock/:symbol", async (req, res) => {
     const { symbol } = req.params;
     const { interval = '1d', from = '2020-01-01' } = req.query;
@@ -155,14 +303,23 @@ async function startServer() {
       const indexSymbol = symbol.endsWith('.BK') ? '^SET.BK' : '^GSPC';
 
       // Fetch chart data, index data, and current fundamentals in parallel
-      const [chartResult, indexResult, quoteResult] = await Promise.all([
-        yahooFinance.chart(symbol, queryOptions) as Promise<any>,
-        yahooFinance.chart(indexSymbol, queryOptions).catch(() => null) as Promise<any>,
-        yahooFinance.quote(symbol).catch(() => null) as Promise<any>
-      ]);
+      let chartResult, indexResult, quoteResult;
+      try {
+        [chartResult, indexResult, quoteResult] = await Promise.all([
+          yahooFinance.chart(symbol, queryOptions) as Promise<any>,
+          yahooFinance.chart(indexSymbol, queryOptions).catch(() => null) as Promise<any>,
+          yahooFinance.quote(symbol).catch(() => null) as Promise<any>
+        ]);
+      } catch (e: any) {
+        console.error(`Yahoo Finance API Error for ${symbol}:`, e.message);
+        if (e.message?.includes('not found') || e.message?.includes('delisted')) {
+          return res.status(404).json({ error: `Symbol ${symbol} not found or delisted` });
+        }
+        throw e;
+      }
       
-      if (!chartResult || !chartResult.quotes) {
-        return res.status(404).json({ error: 'No data found' });
+      if (!chartResult || !chartResult.quotes || chartResult.quotes.length === 0) {
+        return res.status(404).json({ error: 'No data found for this period' });
       }
 
       // Map index data by date for easy lookup

@@ -7,11 +7,14 @@ export interface StockData {
   volume: number;
   vwap?: number;
   obv?: number;
+  ema50?: number;
+  ema135?: number;
   finalScore?: number;
   color?: string;
   volumeColor?: string;
   pe: number | null;
   pb: number | null;
+  isSimulated?: boolean;
 }
 
 export interface ApiResponse {

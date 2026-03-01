@@ -11,7 +11,9 @@ import {
   Save,
   ChevronRight,
   Calculator,
-  Monitor
+  Monitor,
+  Moon,
+  Sun
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { STOCK_LIST, TH_STOCKS, US_STOCKS } from './constants/stockList';
@@ -21,7 +23,11 @@ import { AssetInfo } from './components/AssetInfo';
 import { ChartControls } from './components/ChartControls';
 import { StockNotebook } from './components/StockNotebook';
 import { MarketDetails } from './components/MarketDetails';
-import { calculateCompositeMoneyFlow, calculateVWAP } from './services/indicatorService';
+import { WhatIfBox } from './components/WhatIfBox';
+import { FinancialIndicators } from './components/FinancialIndicators';
+import { Logo } from './components/Logo';
+import { calculateCompositeMoneyFlow, calculateVWAP, calculateEMA } from './services/indicatorService';
+import { simulateGoldenCross } from './services/simulationService';
 import { getFlag, formatCurrency } from './utils/formatters';
 import { cn } from './utils/cn';
 import { StockData, ApiResponse, Transaction, PortfolioSummary } from './types';
@@ -34,6 +40,7 @@ const INTERVALS = [
 
 
 export default function App() {
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [symbol, setSymbol] = useState('AAPL');
   const [searchInput, setSearchInput] = useState('AAPL');
   const [interval, setInterval] = useState('1d');
@@ -43,6 +50,9 @@ export default function App() {
   const [showVWAP, setShowVWAP] = useState(true);
   const [showOBV, setShowOBV] = useState(false);
   const [showVolume, setShowVolume] = useState(false);
+  const [showEMAX, setShowEMAX] = useState(false);
+  const [isSimulationMode, setIsSimulationMode] = useState(false);
+  const [simulationRate, setSimulationRate] = useState(-1.5);
   const [chartType, setChartType] = useState<'line' | 'candlestick'>('line');
   const [hoveredData, setHoveredData] = useState<any | null>(null);
   const [resetTrigger, setResetTrigger] = useState(0);
@@ -50,6 +60,22 @@ export default function App() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [marketFilter, setMarketFilter] = useState<'ALL' | 'TH' | 'US'>('ALL');
   const deferredSearchInput = useDeferredValue(searchInput);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark';
+    if (savedTheme) {
+      setTheme(savedTheme);
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      setTheme('dark');
+    }
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
 
   // Portfolio State
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -158,11 +184,86 @@ export default function App() {
 
   const processedData = useMemo(() => {
     if (!stockData?.data) return [];
-    const withMoneyFlow = calculateCompositeMoneyFlow(stockData.data);
-    return calculateVWAP(withMoneyFlow);
-  }, [stockData]);
+    
+    let rawData = [...stockData.data];
+    
+    if (isSimulationMode && rawData.length > 0) {
+      const lastPoint = rawData[rawData.length - 1];
+      let currentPrice = lastPoint.close;
+      let currentDate = new Date(lastPoint.date);
+      
+      // Weighted Volatility Calculation
+      // 70% weight to last 30 days, 30% weight to last 90 days
+      const calculateVolatility = (lookback: number) => {
+        const recentData = stockData.data.slice(-lookback);
+        if (recentData.length < 2) return 0.02; // Fallback
+        const returns = [];
+        for (let i = 1; i < recentData.length; i++) {
+          returns.push((recentData[i].close - recentData[i-1].close) / recentData[i-1].close);
+        }
+        const meanReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
+        const variance = returns.reduce((a, b) => a + Math.pow(b - meanReturn, 2), 0) / returns.length;
+        return Math.sqrt(variance);
+      };
 
-  const fetchData = async (targetSymbol: string, targetInterval: string) => {
+      const vol30 = calculateVolatility(30);
+      const vol90 = calculateVolatility(90);
+      const weightedVolatility = (vol30 * 0.7) + (vol90 * 0.3);
+      
+      // Random Normal Generator (Box-Muller transform)
+      const randomNormal = (mean: number, stdDev: number) => {
+        const u1 = Math.random();
+        const u2 = Math.random();
+        const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+        return z0 * stdDev + mean;
+      };
+
+      const msPerInterval = interval === '1h' ? 3600000 : (interval === '1d' ? 86400000 : 604800000);
+      const targetDailyChange = simulationRate / 100;
+
+      for (let i = 1; i <= 20; i++) {
+        const dailyChange = randomNormal(targetDailyChange, weightedVolatility);
+        currentPrice = currentPrice * (1 + dailyChange);
+        currentDate = new Date(currentDate.getTime() + msPerInterval);
+        
+        rawData.push({
+          date: currentDate.toISOString(),
+          open: currentPrice * (1 - dailyChange * 0.2),
+          high: currentPrice * (1 + Math.abs(dailyChange) * 0.5),
+          low: currentPrice * (1 - Math.abs(dailyChange) * 0.5),
+          close: currentPrice,
+          volume: lastPoint.volume * (0.8 + Math.random() * 0.4),
+          isSimulated: true,
+          pe: lastPoint.pe,
+          pb: lastPoint.pb
+        });
+      }
+    }
+
+    let data = calculateCompositeMoneyFlow(rawData);
+    data = calculateVWAP(data);
+    data = calculateEMA(data, 50, 'ema50');
+    data = calculateEMA(data, 135, 'ema135');
+    return data;
+  }, [stockData, isSimulationMode, simulationRate, interval]);
+
+  const fetchData = async (targetSymbol: string, targetInterval: string, forceRefresh = false) => {
+    const cacheKey = `stock_data_${targetSymbol}_${targetInterval}`;
+    const cached = localStorage.getItem(cacheKey);
+    
+    if (!forceRefresh && cached) {
+      try {
+        const { data, timestamp } = JSON.parse(cached);
+        const isExpired = Date.now() - timestamp > 24 * 60 * 60 * 1000;
+        if (!isExpired) {
+          setStockData(data);
+          return;
+        }
+      } catch (e) {
+        console.error('Failed to parse cached data', e);
+      }
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -173,6 +274,12 @@ export default function App() {
       }
       const data = await response.json();
       setStockData(data);
+      
+      // Cache the result
+      localStorage.setItem(cacheKey, JSON.stringify({
+        data,
+        timestamp: Date.now()
+      }));
     } catch (err: any) {
       setError(err.message);
       setStockData(null);
@@ -207,6 +314,10 @@ export default function App() {
   const previousPrice = stockData?.data[stockData.data.length - 2]?.close;
   const priceChange = latestPrice && previousPrice ? latestPrice - previousPrice : 0;
   const percentChange = latestPrice && previousPrice ? (priceChange / previousPrice) * 100 : 0;
+
+  const simulationResult = useMemo(() => {
+    return simulateGoldenCross(processedData, interval);
+  }, [processedData, interval]);
 
   // Fetch market prices for portfolio
   useEffect(() => {
@@ -271,7 +382,7 @@ export default function App() {
           <div className="space-y-3">
             <h1 className="text-3xl font-black text-white tracking-tight">Desktop Only</h1>
             <p className="text-zinc-500 text-sm leading-relaxed font-medium">
-              TraderBook 99 สาธุ is a professional-grade analysis platform designed exclusively for large displays. 
+              CrossVision is a professional-grade analysis platform designed exclusively for large displays. 
               Mobile and tablet access is currently restricted to ensure the best analytical experience.
             </p>
           </div>
@@ -279,9 +390,9 @@ export default function App() {
           <div className="pt-4 flex flex-col items-center gap-4">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-900 rounded-full border border-zinc-800">
               <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Analytical Workspace Required</span>
+              <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Analytical Workspace Required</span>
             </div>
-            <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">Please switch to a desktop or laptop</p>
+            <p className="text-xs text-zinc-600 font-bold uppercase tracking-widest">Please switch to a desktop or laptop</p>
           </div>
         </div>
       </div>
@@ -289,36 +400,45 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] text-zinc-900 font-sans selection:bg-zinc-900 selection:text-white">
+    <div className={cn(
+      "min-h-screen transition-colors duration-300",
+      theme === 'dark' ? "bg-[#0f172a] text-zinc-100" : "bg-[#F8F9FA] text-zinc-900"
+    )}>
       {/* Header */}
-      <header className="border-b border-zinc-200 bg-white sticky top-0 z-10">
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <header className={cn(
+        "border-b sticky top-0 z-50 transition-colors duration-300",
+        theme === 'dark' ? "bg-[#1e293b] border-zinc-800" : "bg-white border-zinc-200"
+      )}>
+        <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-10 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-zinc-900 rounded-xl flex items-center justify-center">
-              <Wallet className="text-white w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-lg font-black tracking-tight">TraderBook 99 สาธุ</h1>
-              <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-zinc-400 leading-none">Professional Trading Log</p>
+            <Logo size={40} />
+            <div className="hidden sm:block">
+              <h1 className="text-xl font-black tracking-tight">CrossVision</h1>
+              <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-rose-500 dark:text-rose-400 leading-none">See the Cross before it happens.</p>
             </div>
           </div>
 
-          <form onSubmit={handleSearch} className="flex-1 max-w-md mx-8 relative">
+          <form onSubmit={handleSearch} className="flex-1 max-w-xl mx-4 sm:mx-8 relative">
             <div className="relative group">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 group-focus-within:text-zinc-900 transition-colors" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 group-focus-within:text-zinc-900 dark:group-focus-within:text-zinc-100 transition-colors" />
               <input
                 type="text"
                 value={searchInput}
                 onChange={(e) => { setSearchInput(e.target.value); setShowSuggestions(true); }}
                 onFocus={() => setShowSuggestions(true)}
                 placeholder="Search symbol (e.g. AAPL, PTT.BK)"
-                className="w-full bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-900 focus:ring-0 rounded-xl pl-10 pr-10 py-2 text-sm transition-all outline-none border"
+                className={cn(
+                  "w-full rounded-xl pl-10 pr-10 py-2 text-sm transition-all outline-none border",
+                  theme === 'dark' 
+                    ? "bg-zinc-800 border-zinc-700 text-zinc-100 focus:bg-zinc-700 focus:border-zinc-500" 
+                    : "bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-900"
+                )}
               />
               {searchInput && (
                 <button
                   type="button"
                   onClick={() => { setSearchInput(''); setShowSuggestions(false); }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-zinc-200 rounded-full transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-zinc-200 dark:hover:bg-zinc-600 rounded-full transition-colors"
                 >
                   <X className="w-3 h-3 text-zinc-400" />
                 </button>
@@ -326,16 +446,24 @@ export default function App() {
             </div>
             
             {showSuggestions && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-zinc-200 rounded-xl shadow-2xl overflow-hidden z-50">
-                <div className="flex bg-zinc-50 border-b border-zinc-100 p-1">
+              <div className={cn(
+                "absolute top-full left-0 right-0 mt-2 rounded-xl shadow-2xl overflow-hidden z-50 border",
+                theme === 'dark' ? "bg-zinc-800 border-zinc-700" : "bg-white border-zinc-200"
+              )}>
+                <div className={cn(
+                  "flex p-1 border-b",
+                  theme === 'dark' ? "bg-zinc-900 border-zinc-700" : "bg-zinc-50 border-zinc-100"
+                )}>
                   {(['ALL', 'TH', 'US'] as const).map((m) => (
                     <button
                       key={m}
                       type="button"
                       onClick={() => setMarketFilter(m)}
                       className={cn(
-                        "flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded-md transition-all",
-                        marketFilter === m ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-600"
+                        "flex-1 py-2 text-xs font-bold uppercase tracking-widest rounded-md transition-all",
+                        marketFilter === m 
+                          ? (theme === 'dark' ? "bg-zinc-700 text-zinc-100 shadow-sm" : "bg-white text-zinc-900 shadow-sm")
+                          : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
                       )}
                     >
                       {m === 'ALL' ? 'ทั้งหมด' : (m === 'TH' ? 'หุ้นไทย 🇹🇭' : 'หุ้นเมกา 🇺🇸')}
@@ -344,7 +472,7 @@ export default function App() {
                 </div>
                 <div className="max-h-[400px] overflow-y-auto">
                   {suggestions.length === 0 ? (
-                    <div className="px-4 py-8 text-center text-zinc-400 text-xs italic">
+                    <div className="px-4 py-8 text-center text-zinc-400 text-sm italic">
                       ไม่พบรายชื่อหุ้นที่ค้นหา
                     </div>
                   ) : suggestions.map((s) => (
@@ -356,50 +484,64 @@ export default function App() {
                         setSearchInput(s.symbol);
                         setShowSuggestions(false);
                       }}
-                      className="w-full px-4 py-3 flex items-center justify-between hover:bg-zinc-50 transition-colors border-b border-zinc-50 last:border-0 text-left"
+                      className={cn(
+                        "w-full px-4 py-3 flex items-center justify-between transition-colors border-b last:border-0 text-left",
+                        theme === 'dark' 
+                          ? "hover:bg-zinc-700 border-zinc-700" 
+                          : "hover:bg-zinc-50 border-zinc-50"
+                      )}
                     >
                       <div className="flex items-center gap-3">
-                        <span className="text-xl">{getFlag(s.symbol)}</span>
+                        <span className="text-2xl">{getFlag(s.symbol)}</span>
                         <div>
-                          <p className="text-sm font-bold text-zinc-900">{s.symbol}</p>
-                          <p className="text-[10px] text-zinc-400 font-medium truncate max-w-[200px]">{s.name}</p>
-                          <p className="text-[9px] text-zinc-300 font-bold uppercase tracking-wider mt-0.5">{s.sector}</p>
+                          <p className={cn("text-base font-bold", theme === 'dark' ? "text-zinc-100" : "text-zinc-900")}>{s.symbol}</p>
+                          <p className="text-sm text-zinc-400 font-medium truncate max-w-[200px]">{s.name}</p>
+                          <p className="text-[10px] text-zinc-300 dark:text-zinc-500 font-bold uppercase tracking-wider mt-0.5">{s.sector}</p>
                         </div>
                       </div>
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-300">{s.market}</span>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-300 dark:text-zinc-600">{s.market}</span>
                     </button>
                   ))}
                 </div>
               </div>
             )}
-            {showSuggestions && (
-              <div 
-                className="fixed inset-0 z-40" 
-                onClick={() => setShowSuggestions(false)} 
-              />
-            )}
           </form>
 
           <div className="flex items-center gap-4">
-            <div className="flex bg-zinc-100 p-1 rounded-lg border border-zinc-200 gap-1">
+            <button
+              onClick={toggleTheme}
+              className={cn(
+                "p-2 rounded-xl border transition-all",
+                theme === 'dark' 
+                  ? "bg-zinc-800 border-zinc-700 text-amber-400 hover:bg-zinc-700" 
+                  : "bg-zinc-100 border-zinc-200 text-zinc-500 hover:bg-zinc-200"
+              )}
+            >
+              {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
+
+            <div className={cn(
+              "flex p-1 rounded-lg border gap-1",
+              theme === 'dark' ? "bg-zinc-800 border-zinc-700" : "bg-zinc-100 border-zinc-200"
+            )}>
               <button
                 onClick={() => setActiveTab('chart')}
                 className={cn(
                   "px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-md transition-all flex items-center gap-2",
                   activeTab === 'chart' 
-                    ? "bg-white text-zinc-900 shadow-sm" 
-                    : "text-zinc-500 hover:text-zinc-900"
+                    ? (theme === 'dark' ? "bg-zinc-700 text-zinc-100 shadow-sm" : "bg-white text-zinc-900 shadow-sm")
+                    : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300"
                 )}
               >
-                <TrendingUp className="w-3.5 h-3.5" /> Chart
+                <TrendingUp className="w-3.5 h-3.5" /> Vision
               </button>
               <button
                 onClick={() => setActiveTab('portfolio')}
                 className={cn(
                   "px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-md transition-all flex items-center gap-2",
                   activeTab === 'portfolio' 
-                    ? "bg-white text-zinc-900 shadow-sm" 
-                    : "text-zinc-500 hover:text-zinc-900"
+                    ? (theme === 'dark' ? "bg-zinc-700 text-zinc-100 shadow-sm" : "bg-white text-zinc-900 shadow-sm")
+                    : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300"
                 )}
               >
                 <Wallet className="w-3.5 h-3.5" /> Portfolio
@@ -409,12 +551,15 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-10 py-8">
         {error ? (
-          <div className="bg-red-50 border border-red-100 rounded-2xl p-8 flex flex-col items-center justify-center text-center">
+          <div className={cn(
+            "border rounded-2xl p-8 flex flex-col items-center justify-center text-center",
+            theme === 'dark' ? "bg-red-900/10 border-red-900/20" : "bg-red-50 border-red-100"
+          )}>
             <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
-            <h2 className="text-lg font-bold text-red-900 mb-2">Error Loading Data</h2>
-            <p className="text-red-700 text-sm max-w-md mb-6">{error}</p>
+            <h2 className={cn("text-lg font-bold mb-2", theme === 'dark' ? "text-red-400" : "text-red-900")}>Error Loading Data</h2>
+            <p className={cn("text-sm max-w-md mb-6", theme === 'dark' ? "text-red-300" : "text-red-700")}>{error}</p>
             <button 
               onClick={() => fetchData(symbol, interval)}
               className="bg-red-600 text-white px-6 py-2 rounded-xl font-semibold text-sm hover:bg-red-700 transition-colors flex items-center gap-2"
@@ -423,52 +568,25 @@ export default function App() {
             </button>
           </div>
         ) : activeTab === 'chart' ? (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* Legend Area (Left) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Left Sidebar */}
             <div className="lg:col-span-2 space-y-6">
-              {/* Asset Quick View (Moved from Right Sidebar) */}
-              {currentSummary.totalShares > 0 && (
-                <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm">
-                  <div className="p-4 border-b border-zinc-100 bg-zinc-50/50 flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <Wallet className="w-3.5 h-3.5 text-zinc-900" />
-                        <h3 className="text-[10px] font-bold uppercase tracking-widest">Holdings</h3>
-                      </div>
-                      <p className="text-[9px] text-zinc-400 font-bold uppercase">{symbol}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className={cn(
-                        "text-xs font-black",
-                        latestPrice && latestPrice >= currentSummary.avgCost ? "text-emerald-600" : "text-rose-600"
-                      )}>
-                        {latestPrice ? (((latestPrice - currentSummary.avgCost) / currentSummary.avgCost) * 100).toFixed(2) : 0}%
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="p-4 grid grid-cols-2 gap-3">
-                    <div className="bg-zinc-50 p-2.5 rounded-xl border border-zinc-100">
-                      <p className="text-[9px] uppercase font-bold text-zinc-400 mb-0.5">Shares</p>
-                      <p className="text-xs font-bold text-zinc-900">{currentSummary.totalShares}</p>
-                    </div>
-                    <div className="bg-zinc-50 p-2.5 rounded-xl border border-zinc-100">
-                      <p className="text-[9px] uppercase font-bold text-zinc-400 mb-0.5">Avg Cost</p>
-                      <p className="text-xs font-bold text-zinc-900">{formatCurrency(currentSummary.avgCost, stockData?.currency)}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <Legend />
+              <Legend theme={theme} />
+              <WhatIfBox 
+                result={simulationResult}
+                currency={stockData?.currency}
+                interval={interval}
+                theme={theme}
+              />
               <StockNotebook 
                 symbol={symbol} 
                 currentPrice={latestPrice || 0} 
                 currency={stockData?.currency} 
+                theme={theme}
               />
             </div>
 
-            {/* Main Chart Area (Wide) */}
+            {/* Center Column */}
             <div className="lg:col-span-7 space-y-6">
               <AssetInfo 
                 symbol={symbol}
@@ -477,6 +595,7 @@ export default function App() {
                 percentChange={percentChange}
                 currency={stockData?.currency}
                 interval={interval}
+                theme={theme}
               />
 
               <ChartControls 
@@ -490,17 +609,32 @@ export default function App() {
                 setShowOBV={setShowOBV}
                 showVolume={showVolume}
                 setShowVolume={setShowVolume}
-                onReset={() => setResetTrigger(prev => prev + 1)}
+                showEMAX={showEMAX}
+                setShowEMAX={setShowEMAX}
+                isSimulationMode={isSimulationMode}
+                setIsSimulationMode={setIsSimulationMode}
+                onReset={() => {
+                  setResetTrigger(prev => prev + 1);
+                  setIsSimulationMode(false);
+                }}
+                onRefresh={() => fetchData(symbol, interval, true)}
+                theme={theme}
               />
 
               {/* Chart */}
-              <div className="bg-white rounded-2xl border border-zinc-200 p-6 h-[600px] relative overflow-hidden group">
+              <div className={cn(
+                "rounded-2xl border p-6 h-[500px] relative overflow-hidden group transition-colors duration-300",
+                theme === 'dark' ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200"
+              )}>
                 {loading && (
-                  <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] z-20 flex items-center justify-center">
-                    <div className="flex flex-col items-center gap-3">
-                      <RefreshCcw className="w-8 h-8 text-zinc-900 animate-spin" />
-                      <p className="text-sm font-bold text-zinc-900 uppercase tracking-widest">Updating Market Data...</p>
-                    </div>
+                  <div className={cn(
+                    "absolute inset-0 backdrop-blur-[2px] z-20 flex items-center justify-center",
+                    theme === 'dark' ? "bg-zinc-900/60" : "bg-white/60"
+                  )}>
+            <div className="flex flex-col items-center gap-3">
+              <RefreshCcw className={cn("w-8 h-8 animate-spin", theme === 'dark' ? "text-zinc-100" : "text-zinc-900")} />
+              <p className={cn("text-base font-bold uppercase tracking-widest", theme === 'dark' ? "text-zinc-100" : "text-zinc-900")}>Optimizing Data...</p>
+            </div>
                   </div>
                 )}
                 
@@ -510,56 +644,69 @@ export default function App() {
                     showVWAP={showVWAP} 
                     showOBV={showOBV} 
                     showVolume={showVolume}
+                    showEMAX={showEMAX}
                     chartType={chartType}
                     onHover={setHoveredData}
                     resetTrigger={resetTrigger}
+                    isSimulationMode={isSimulationMode}
+                    theme={theme}
                   />
                 </div>
               </div>
+
+              <FinancialIndicators symbol={symbol} theme={theme} />
             </div>
 
-            {/* Sidebar Stats (Right) */}
+            {/* Right Sidebar */}
             <div className="lg:col-span-3 space-y-6">
-              {/* Spacer to align MarketDetails with Chart (accounting for AssetInfo + ChartControls) */}
-              <div className="hidden lg:block h-[140px]" />
-
               <MarketDetails 
                 data={hoveredData}
                 latestData={processedData[processedData.length - 1]}
                 currency={stockData?.currency}
+                theme={theme}
               />
 
               {/* Buy Strategy */}
-              <div className="bg-white rounded-2xl border border-zinc-200 p-6">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-900 mb-4 flex items-center gap-2">
+              <div className={cn(
+                "rounded-2xl border p-6 transition-colors duration-300",
+                theme === 'dark' ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200"
+              )}>
+                <h3 className={cn("text-sm font-bold uppercase tracking-widest mb-4 flex items-center gap-2", theme === 'dark' ? "text-zinc-100" : "text-zinc-900")}>
                   <TrendingUp className="w-4 h-4" />
-                  <span>Buy Strategy</span>
+                  <span>CrossVision Strategy</span>
                 </h3>
                 <div className="space-y-4">
-                  <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100">
-                    <p className="text-[11px] font-bold text-emerald-800 uppercase mb-1">Entry Conditions:</p>
-                    <ul className="text-[10px] text-emerald-700 space-y-1 list-disc pl-4">
+                  <div className={cn(
+                    "p-3 rounded-xl border",
+                    theme === 'dark' ? "bg-emerald-900/10 border-emerald-900/20" : "bg-emerald-50 border-emerald-100"
+                  )}>
+                    <p className={cn("text-xs font-bold uppercase mb-1", theme === 'dark' ? "text-emerald-400" : "text-emerald-800")}>Vision Conditions:</p>
+                    <ul className={cn("text-[13px] space-y-1 list-disc pl-4", theme === 'dark' ? "text-emerald-300" : "text-emerald-700")}>
                       <li>Price above <b>VWAP</b> (Support)</li>
                       <li>VWAP color is <b>Leading (Dark Green)</b></li>
-                      <li>Money Flow Score &gt; 50</li>
+                      <li>Money Flow Score &gt; 30</li>
                     </ul>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl border border-zinc-200 p-6">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-4">Terminal Status</h3>
+              {/* Terminal Status */}
+              <div className={cn(
+                "rounded-2xl border p-6 transition-colors duration-300",
+                theme === 'dark' ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200"
+              )}>
+                <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-4">CrossVision Terminal</h3>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-zinc-500">API Status</span>
-                    <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-600">
+                    <span className="text-sm font-semibold text-zinc-500">API Status</span>
+                    <span className="flex items-center gap-1.5 text-sm font-bold text-emerald-600">
                       <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                       Connected
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-zinc-500">Source</span>
-                    <span className="text-xs font-bold">Yahoo Finance</span>
+                    <span className="text-sm font-semibold text-zinc-500">Source</span>
+                    <span className={cn("text-sm font-bold", theme === 'dark' ? "text-zinc-100" : "text-zinc-900")}>Yahoo Finance</span>
                   </div>
                 </div>
               </div>
@@ -570,15 +717,18 @@ export default function App() {
             {/* Portfolio Dashboard */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               <div className="md:col-span-2 space-y-8">
-                <div className="bg-white rounded-2xl border border-zinc-200 p-8">
+                <div className={cn(
+                  "rounded-2xl border p-8 transition-colors duration-300",
+                  theme === 'dark' ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200"
+                )}>
                   <div className="flex items-center justify-between mb-8">
                     <div>
-                      <h2 className="text-2xl font-black tracking-tight">Portfolio Overview</h2>
+                      <h2 className={cn("text-2xl font-black tracking-tight", theme === 'dark' ? "text-zinc-100" : "text-zinc-900")}>CrossVision Portfolio</h2>
                       <p className="text-xs font-bold uppercase tracking-widest text-zinc-400">All recorded holdings</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Est. Portfolio Value</p>
-                      <p className="text-2xl font-black text-zinc-900">
+                      <p className="text-xs font-bold text-zinc-400 uppercase">Est. Portfolio Value</p>
+                      <p className={cn("text-2xl font-black", theme === 'dark' ? "text-zinc-100" : "text-zinc-900")}>
                         {portfolioSummaries.reduce((sum, s) => sum + (s.totalShares * (marketPrices[s.symbol]?.price || s.avgCost)), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
                     </div>
@@ -587,7 +737,7 @@ export default function App() {
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
-                        <tr className="border-b border-zinc-100">
+                        <tr className={cn("border-b", theme === 'dark' ? "border-zinc-800" : "border-zinc-100")}>
                           <th className="text-left py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Asset</th>
                           <th className="text-right py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Shares</th>
                           <th className="text-right py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Avg Cost</th>
@@ -610,25 +760,31 @@ export default function App() {
                           const cur = mPrice?.currency || 'USD';
 
                           return (
-                            <tr key={s.symbol} className="border-b border-zinc-50 hover:bg-zinc-50/50 transition-colors group">
+                            <tr key={s.symbol} className={cn(
+                              "border-b transition-colors group",
+                              theme === 'dark' ? "border-zinc-800/50 hover:bg-zinc-800/30" : "border-zinc-50 hover:bg-zinc-50/50"
+                            )}>
                               <td className="py-4">
                                 <button 
                                   onClick={() => { setSymbol(s.symbol); setSearchInput(s.symbol); setActiveTab('chart'); }}
-                                  className="font-bold text-zinc-900 hover:underline flex items-center gap-2"
+                                  className={cn(
+                                    "font-bold hover:underline flex items-center gap-2",
+                                    theme === 'dark' ? "text-zinc-100" : "text-zinc-900"
+                                  )}
                                 >
                                   <span className="text-xl">{getFlag(s.symbol)}</span>
                                   {s.symbol}
                                   <ChevronRight className="w-3 h-3 text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity" />
                                 </button>
                               </td>
-                              <td className="text-right py-4 font-bold text-zinc-700">{s.totalShares}</td>
-                              <td className="text-right py-4 font-bold text-zinc-700">{formatCurrency(s.avgCost, cur)}</td>
-                              <td className="text-right py-4 font-bold text-zinc-700">
+                              <td className={cn("text-right py-4 font-bold", theme === 'dark' ? "text-zinc-300" : "text-zinc-700")}>{s.totalShares}</td>
+                              <td className={cn("text-right py-4 font-bold", theme === 'dark' ? "text-zinc-300" : "text-zinc-700")}>{formatCurrency(s.avgCost, cur)}</td>
+                              <td className={cn("text-right py-4 font-bold", theme === 'dark' ? "text-zinc-300" : "text-zinc-700")}>
                                 {currentPrice ? formatCurrency(currentPrice, cur) : 'Loading...'}
                               </td>
                               <td className={cn(
                                 "text-right py-4 font-bold",
-                                pl >= 0 ? "text-emerald-600" : "text-rose-600"
+                                pl >= 0 ? "text-emerald-500" : "text-rose-500"
                               )}>
                                 <div>{pl >= 0 ? '+' : ''}{formatCurrency(pl, cur)}</div>
                                 <div className="text-[10px] uppercase tracking-wider">{plPercent.toFixed(2)}%</div>
@@ -636,7 +792,7 @@ export default function App() {
                               <td className="text-right py-4">
                                 <button 
                                   onClick={() => { setSymbol(s.symbol); setSearchInput(s.symbol); }}
-                                  className="text-[10px] font-bold uppercase text-zinc-400 hover:text-zinc-900 transition-colors"
+                                  className="text-[10px] font-bold uppercase text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
                                 >
                                   Select
                                 </button>
@@ -649,32 +805,40 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="bg-white rounded-2xl border border-zinc-200 p-8">
+                <div className={cn(
+                  "rounded-2xl border p-8 transition-colors duration-300",
+                  theme === 'dark' ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200"
+                )}>
                   <div className="flex items-center justify-between mb-8">
                     <div>
-                      <h2 className="text-2xl font-black tracking-tight">Transaction History</h2>
-                      <p className="text-xs font-bold uppercase tracking-widest text-zinc-400">Recent activity for {symbol}</p>
+                      <h2 className={cn("text-2xl font-black tracking-tight", theme === 'dark' ? "text-zinc-100" : "text-zinc-900")}>CrossVision History</h2>
+                      <p className="text-sm font-bold uppercase tracking-widest text-zinc-400">Recent activity for {symbol}</p>
                     </div>
                   </div>
 
                   <div className="space-y-4">
                     {transactions.filter(t => t.symbol === symbol).reverse().map(t => (
-                      <div key={t.id} className="flex items-center justify-between p-4 bg-zinc-50 rounded-xl border border-zinc-100 group">
+                      <div key={t.id} className={cn(
+                        "flex items-center justify-between p-4 rounded-xl border group transition-colors",
+                        theme === 'dark' ? "bg-zinc-800/50 border-zinc-700" : "bg-zinc-50 border-zinc-100"
+                      )}>
                         <div className="flex items-center gap-4">
                           <div className={cn(
-                            "w-10 h-10 rounded-lg flex items-center justify-center font-bold text-xs",
-                            t.type === 'BUY' ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+                            "w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm",
+                            t.type === 'BUY' 
+                              ? (theme === 'dark' ? "bg-emerald-900/20 text-emerald-400" : "bg-emerald-100 text-emerald-700") 
+                              : (theme === 'dark' ? "bg-rose-900/20 text-rose-400" : "bg-rose-100 text-rose-700")
                           )}>
                             {t.type}
                           </div>
                           <div>
-                            <p className="text-sm font-bold text-zinc-900">{t.shares} shares @ {formatCurrency(t.price, stockData?.currency)}</p>
+                            <p className={cn("text-base font-bold", theme === 'dark' ? "text-zinc-100" : "text-zinc-900")}>{t.shares} shares @ {formatCurrency(t.price, stockData?.currency)}</p>
                             <p className="text-[10px] font-bold text-zinc-400 uppercase">{t.date}</p>
                           </div>
                         </div>
                         <button 
                           onClick={() => deleteTransaction(t.id)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-zinc-400 hover:text-rose-600"
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-zinc-400 hover:text-rose-500"
                         >
                           Delete
                         </button>
@@ -688,16 +852,22 @@ export default function App() {
               </div>
 
               <div className="space-y-8">
-                <div className="bg-zinc-900 rounded-2xl p-8 text-white shadow-xl shadow-zinc-200">
+                <div className={cn(
+                  "rounded-2xl p-8 shadow-xl transition-colors duration-300",
+                  theme === 'dark' ? "bg-zinc-800 border border-zinc-700 shadow-none" : "bg-zinc-900 text-white shadow-zinc-200"
+                )}>
                   <div className="flex items-center gap-2 mb-6">
                     <Plus className="w-5 h-5 text-emerald-400" />
-                    <h2 className="text-xl font-black tracking-tight">Add Record</h2>
+                    <h2 className={cn("text-2xl font-black tracking-tight", theme === 'dark' ? "text-zinc-100" : "text-white")}>Add CrossVision Record</h2>
                   </div>
                   
                   <div className="space-y-6">
                     <div>
                       <p className="text-[10px] uppercase font-bold text-zinc-500 mb-3">Transaction Type</p>
-                      <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-800 rounded-lg">
+                      <div className={cn(
+                        "grid grid-cols-2 gap-2 p-1 rounded-lg",
+                        theme === 'dark' ? "bg-zinc-900" : "bg-zinc-800"
+                      )}>
                         <button 
                           onClick={() => setNewTx({ ...newTx, type: 'BUY' })}
                           className={cn(
@@ -721,7 +891,7 @@ export default function App() {
 
                     <div>
                       <p className="text-[10px] uppercase font-bold text-zinc-500 mb-2">Symbol</p>
-                      <p className="text-lg font-black text-white">{symbol}</p>
+                      <p className={cn("text-xl font-black", theme === 'dark' ? "text-zinc-100" : "text-white")}>{symbol}</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -731,7 +901,10 @@ export default function App() {
                           type="number" 
                           value={newTx.shares || ''}
                           onChange={(e) => setNewTx({ ...newTx, shares: Number(e.target.value) })}
-                          className="w-full bg-zinc-800 border-transparent focus:bg-zinc-700 focus:ring-0 rounded-lg px-3 py-2 text-sm font-bold text-white outline-none"
+                          className={cn(
+                            "w-full border-transparent focus:ring-0 rounded-lg px-3 py-2 text-base font-bold outline-none transition-colors",
+                            theme === 'dark' ? "bg-zinc-900 text-zinc-100 focus:bg-zinc-950" : "bg-zinc-800 text-white focus:bg-zinc-700"
+                          )}
                           placeholder="0"
                         />
                       </div>
@@ -741,7 +914,10 @@ export default function App() {
                           type="number" 
                           value={newTx.price || ''}
                           onChange={(e) => setNewTx({ ...newTx, price: Number(e.target.value) })}
-                          className="w-full bg-zinc-800 border-transparent focus:bg-zinc-700 focus:ring-0 rounded-lg px-3 py-2 text-sm font-bold text-white outline-none"
+                          className={cn(
+                            "w-full border-transparent focus:ring-0 rounded-lg px-3 py-2 text-base font-bold outline-none transition-colors",
+                            theme === 'dark' ? "bg-zinc-900 text-zinc-100 focus:bg-zinc-950" : "bg-zinc-800 text-white focus:bg-zinc-700"
+                          )}
                           placeholder="0.00"
                         />
                       </div>
@@ -753,13 +929,19 @@ export default function App() {
                         type="date" 
                         value={newTx.date}
                         onChange={(e) => setNewTx({ ...newTx, date: e.target.value })}
-                        className="w-full bg-zinc-800 border-transparent focus:bg-zinc-700 focus:ring-0 rounded-lg px-3 py-2 text-sm font-bold text-white outline-none"
+                        className={cn(
+                          "w-full border-transparent focus:ring-0 rounded-lg px-3 py-2 text-base font-bold outline-none transition-colors",
+                          theme === 'dark' ? "bg-zinc-900 text-zinc-100 focus:bg-zinc-950" : "bg-zinc-800 text-white focus:bg-zinc-700"
+                        )}
                       />
                     </div>
 
                     <button 
                       onClick={addTransaction}
-                      className="w-full bg-white text-zinc-900 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-zinc-100 transition-all flex items-center justify-center gap-2"
+                      className={cn(
+                        "w-full py-3 rounded-xl font-black text-sm uppercase tracking-widest transition-all flex items-center justify-center gap-2",
+                        theme === 'dark' ? "bg-zinc-100 text-zinc-900 hover:bg-zinc-200" : "bg-white text-zinc-900 hover:bg-zinc-100"
+                      )}
                     >
                       <Save className="w-4 h-4" /> Save Transaction
                     </button>
@@ -768,23 +950,29 @@ export default function App() {
 
                 {/* DCA Simulator (Moved from Chart) */}
                 {(marketPrices[symbol]?.price || latestPrice) && currentSummary.totalShares > 0 && (
-                  <div className="bg-white rounded-2xl border border-zinc-200 p-8">
+                  <div className={cn(
+                    "rounded-2xl border p-8 transition-colors duration-300",
+                    theme === 'dark' ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200"
+                  )}>
                     <div className="flex items-center gap-2 mb-6">
-                      <Calculator className="w-5 h-5 text-zinc-900" />
-                      <h2 className="text-xl font-black tracking-tight">DCA Simulator</h2>
+                      <Calculator className={cn("w-5 h-5", theme === 'dark' ? "text-zinc-100" : "text-zinc-900")} />
+                      <h2 className={cn("text-2xl font-black tracking-tight", theme === 'dark' ? "text-zinc-100" : "text-zinc-900")}>CrossVision DCA Simulator</h2>
                     </div>
                     
                     <div className="space-y-6">
-                      <div className="flex items-center justify-between p-4 bg-zinc-50 rounded-xl border border-zinc-100">
+                      <div className={cn(
+                        "flex items-center justify-between p-4 rounded-xl border",
+                        theme === 'dark' ? "bg-zinc-800/50 border-zinc-700" : "bg-zinc-50 border-zinc-100"
+                      )}>
                         <div>
                           <p className="text-[10px] uppercase font-bold text-zinc-400 mb-1">Market Price</p>
-                          <p className="text-lg font-black text-zinc-900">
+                          <p className={cn("text-xl font-black", theme === 'dark' ? "text-zinc-100" : "text-zinc-900")}>
                             {formatCurrency(marketPrices[symbol]?.price || latestPrice || 0, marketPrices[symbol]?.currency || stockData?.currency)}
                           </p>
                         </div>
                         <div className="text-right">
                           <p className="text-[10px] uppercase font-bold text-zinc-400 mb-1">Current Avg</p>
-                          <p className="text-lg font-black text-zinc-500">
+                          <p className="text-xl font-black text-zinc-500">
                             {formatCurrency(currentSummary.avgCost, marketPrices[symbol]?.currency || stockData?.currency)}
                           </p>
                         </div>
@@ -793,7 +981,7 @@ export default function App() {
                       <div>
                         <div className="flex justify-between mb-3">
                           <span className="text-[10px] font-bold text-zinc-500 uppercase">Buy More Shares</span>
-                          <span className="text-sm font-black text-zinc-900">+{simAdditionalShares}</span>
+                          <span className={cn("text-base font-black", theme === 'dark' ? "text-zinc-100" : "text-zinc-900")}>+{simAdditionalShares}</span>
                         </div>
                         <input 
                           type="range" 
@@ -802,23 +990,29 @@ export default function App() {
                           step="1"
                           value={simAdditionalShares}
                           onChange={(e) => setSimAdditionalShares(Number(e.target.value))}
-                          className="w-full h-2 bg-zinc-100 rounded-lg appearance-none cursor-pointer accent-zinc-900"
+                          className={cn(
+                            "w-full h-2 rounded-lg appearance-none cursor-pointer",
+                            theme === 'dark' ? "bg-zinc-800 accent-zinc-100" : "bg-zinc-100 accent-zinc-900"
+                          )}
                         />
                       </div>
 
-                      <div className="bg-zinc-900 rounded-2xl p-6 text-white shadow-lg shadow-zinc-200">
+                      <div className={cn(
+                        "rounded-2xl p-6 shadow-lg transition-colors",
+                        theme === 'dark' ? "bg-zinc-800 border border-zinc-700 shadow-none" : "bg-zinc-900 text-white shadow-zinc-200"
+                      )}>
                         <div className="flex justify-between items-center mb-2">
                           <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">New Average Cost</span>
                           <span className={cn(
-                            "text-xl font-black",
+                            "text-2xl font-black",
                             ((currentSummary.totalShares * currentSummary.avgCost + simAdditionalShares * (marketPrices[symbol]?.price || latestPrice || 0)) / (currentSummary.totalShares + simAdditionalShares)) < currentSummary.avgCost 
                               ? "text-emerald-400" 
-                              : "text-white"
+                              : (theme === 'dark' ? "text-zinc-100" : "text-white")
                           )}>
                             {formatCurrency(((currentSummary.totalShares * currentSummary.avgCost + simAdditionalShares * (marketPrices[symbol]?.price || latestPrice || 0)) / (currentSummary.totalShares + simAdditionalShares || 1)), marketPrices[symbol]?.currency || stockData?.currency)}
                           </span>
                         </div>
-                        <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest">
+                        <p className="text-xs text-zinc-500 font-bold uppercase tracking-widest">
                           {((currentSummary.totalShares * currentSummary.avgCost + simAdditionalShares * (marketPrices[symbol]?.price || latestPrice || 0)) / (currentSummary.totalShares + simAdditionalShares)) < currentSummary.avgCost 
                             ? "Lowering your cost basis" 
                             : "Increasing your cost basis"}
@@ -829,8 +1023,8 @@ export default function App() {
                 )}
 
                 <div className="bg-white rounded-2xl border border-zinc-200 p-6">
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-4">Portfolio Tips</h3>
-                  <p className="text-[10px] leading-relaxed text-zinc-500 font-medium">
+                  <h3 className="text-sm font-bold uppercase tracking-widest text-zinc-400 mb-4">Portfolio Tips</h3>
+                  <p className="text-xs leading-relaxed text-zinc-500 font-medium">
                     Recording individual transactions allows you to track your performance over time. The system automatically calculates your average cost basis using the "BUY" transactions.
                   </p>
                 </div>

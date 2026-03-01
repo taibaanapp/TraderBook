@@ -92,6 +92,22 @@ export function calculateCompositeMoneyFlow(data: StockData[]): StockData[] {
   });
 }
 
+export function calculateEMA(data: StockData[], period: number, key: 'ema50' | 'ema135'): StockData[] {
+  if (!data || data.length === 0) return [];
+  
+  const multiplier = 2 / (period + 1);
+  let prevEMA = data[0].close;
+  
+  return data.map((point, i) => {
+    if (i === 0) {
+      return { ...point, [key]: prevEMA };
+    }
+    const ema = (point.close - prevEMA) * multiplier + prevEMA;
+    prevEMA = ema;
+    return { ...point, [key]: ema };
+  });
+}
+
 export function calculateVWAP(data: StockData[]): StockData[] {
   let cumulativeTPV = 0;
   let cumulativeVolume = 0;
