@@ -36,6 +36,12 @@ db.exec(`
     data TEXT,
     timestamp INTEGER
   );
+  CREATE TABLE IF NOT EXISTS api_usage (
+    api_name TEXT,
+    usage_date TEXT,
+    count INTEGER,
+    PRIMARY KEY (api_name, usage_date)
+  );
 `);
 
 const CACHE_TTL = {
@@ -127,6 +133,172 @@ async function startServer() {
       console.error('News Fetch Error:', error);
       res.status(500).json({ error: 'Failed to fetch news' });
     }
+  });
+
+  app.post("/api/grok/news", async (req, res) => {
+    const { symbol, date } = req.body;
+    const apiKey = process.env.XAI_Grok_Key;
+
+    if (!apiKey) {
+      return res.status(500).json({ error: "XAI_Grok_Key is not configured in environment variables." });
+    }
+
+    try {
+      const prompt = `Analyze the stock ${symbol} around the date ${date}. 
+      Please provide:
+      1. A summary of major news for this stock from 4 days before to 4 days after ${date}.
+      2. General social media sentiment and opinions during this period.
+      3. A brief technical and fundamental analysis of why the price moved as it did (if it moved).
+      
+      Format the response in JSON with the following keys: "summary", "social", "analysis". 
+      Keep the tone professional and analytical.`;
+
+      const response = await fetch("https://api.x.ai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: "grok-2-1212",
+          messages: [
+            { role: "system", content: "You are a professional financial analyst with access to historical news and social media data." },
+            { role: "user", content: prompt }
+          ],
+          response_format: { type: "json_object" }
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Grok API Error:", errorText);
+        return res.status(response.status).json({ error: "Failed to fetch from Grok API", details: errorText });
+      }
+
+      const data = await response.json();
+      const content = JSON.parse(data.choices[0].message.content);
+      res.json(content);
+    } catch (error: any) {
+      console.error("Grok Proxy Error:", error);
+      res.status(500).json({ error: "Internal server error", message: error.message });
+    }
+  });
+
+  app.post("/api/gemini/news", async (req, res) => {
+    const { symbol, date } = req.body;
+    const apiKey = process.env.GeNews_api;
+
+    if (!apiKey) {
+      return res.status(500).json({ error: "GeNews_api is not configured in environment variables." });
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    
+    try {
+      // Rate limiting: 30 calls per day
+      const usage = db.prepare('SELECT count FROM api_usage WHERE api_name = ? AND usage_date = ?').get('gemini_news', today) as { count: number } | undefined;
+      
+      if (usage && usage.count >= 30) {
+        return res.status(429).json({ error: "Daily limit reached (30 calls/day). Please try again tomorrow." });
+      }
+
+      const prompt = `วิเคราะห์หุ้น ${symbol} ในช่วงวันที่ ${date} (บวก/ลบ 4 วัน) โดยใช้ Google Search เพื่อหาข้อมูลดังนี้:
+      1. ข่าวสำคัญ 5 ข่าวล่าสุด (หัวข้อข่าวและลิงค์ URL)
+      2. ความคิดเห็นจากโซเชียลมีเดีย (ระบุชื่อผู้โพสต์/แหล่งที่มา และลิงค์ URL ถ้ามี)
+      3. บทวิเคราะห์จาก AI โดยประมวลผลจากข่าวและความเห็นของผู้คน พร้อมให้คำแนะนำว่าควร "ลงทุน", "กังวล", หรือ "ควรรอ" รวมถึงนำคำพูดของผู้บริหารหรือข้อมูลการเงินที่หาได้มาประกอบการวิเคราะห์
+
+      กรุณาตอบเป็นภาษาไทยทั้งหมดในรูปแบบ JSON ตามโครงสร้างที่กำหนด:
+      - headlines: รายการข่าว 5 ข่าว (title, url)
+      - social_posts: รายการความคิดเห็น (author, content, url)
+      - ai_analysis: บทวิเคราะห์เชิงลึก (summary, recommendation, details)`;
+
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+      
+      const response = await fetch(geminiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          tools: [{ googleSearch: {} }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "OBJECT",
+              properties: {
+                headlines: {
+                  type: "ARRAY",
+                  items: {
+                    type: "OBJECT",
+                    properties: {
+                      title: { type: "STRING" },
+                      url: { type: "STRING" }
+                    },
+                    required: ["title", "url"]
+                  }
+                },
+                social_posts: {
+                  type: "ARRAY",
+                  items: {
+                    type: "OBJECT",
+                    properties: {
+                      author: { type: "STRING" },
+                      content: { type: "STRING" },
+                      url: { type: "STRING" }
+                    },
+                    required: ["author", "content", "url"]
+                  }
+                },
+                ai_analysis: {
+                  type: "OBJECT",
+                  properties: {
+                    summary: { type: "STRING" },
+                    recommendation: { type: "STRING" },
+                    details: { type: "STRING" }
+                  },
+                  required: ["summary", "recommendation", "details"]
+                }
+              },
+              required: ["headlines", "social_posts", "ai_analysis"]
+            }
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Gemini API Error:", errorText);
+        return res.status(response.status).json({ error: "Failed to fetch from Gemini API", details: errorText });
+      }
+
+      const result = await response.json();
+      const contentText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (!contentText) {
+        throw new Error("Empty response from Gemini");
+      }
+
+      const content = JSON.parse(contentText);
+
+      // Increment usage
+      if (usage) {
+        db.prepare('UPDATE api_usage SET count = count + 1 WHERE api_name = ? AND usage_date = ?').run('gemini_news', today);
+      } else {
+        db.prepare('INSERT INTO api_usage (api_name, usage_date, count) VALUES (?, ?, ?)').run('gemini_news', today, 1);
+      }
+
+      res.json(content);
+    } catch (error: any) {
+      console.error("Gemini Proxy Error:", error);
+      res.status(500).json({ error: "Internal server error", message: error.message });
+    }
+  });
+
+  app.get("/api/usage/gemini_news", (req, res) => {
+    const today = new Date().toISOString().split('T')[0];
+    const usage = db.prepare('SELECT count FROM api_usage WHERE api_name = ? AND usage_date = ?').get('gemini_news', today) as { count: number } | undefined;
+    res.json({ count: usage ? usage.count : 0, limit: 30 });
   });
 
   app.get("/api/financials/:symbol", async (req, res) => {

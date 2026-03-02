@@ -12,6 +12,7 @@ interface ChartProps {
   showEMAX: boolean;
   chartType: 'line' | 'candlestick';
   onHover: (data: StockData | null) => void;
+  onRightClick: (data: StockData, x: number, y: number) => void;
   resetTrigger: number;
   isSimulationMode?: boolean;
   theme?: 'light' | 'dark';
@@ -25,6 +26,7 @@ export const TradingChart: React.FC<ChartProps> = ({
   showEMAX,
   chartType,
   onHover,
+  onRightClick,
   resetTrigger,
   isSimulationMode,
   theme
@@ -417,6 +419,15 @@ export const TradingChart: React.FC<ChartProps> = ({
     }).on('mouseleave', () => {
       crosshair.style('display', 'none');
       onHover(null);
+    }).on('contextmenu', (event) => {
+      event.preventDefault();
+      const [mx, my] = d3.pointer(event);
+      const currentX = stateRef.current.lastTransform.rescaleX(x);
+      const idx = Math.round(currentX.invert(mx));
+      const d = data[idx];
+      if (d) {
+        onRightClick(d, event.pageX, event.pageY);
+      }
     });
 
   }, [data, showVWAP, showOBV, showVolume, showEMAX, chartType, resetTrigger, theme]);

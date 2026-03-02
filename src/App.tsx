@@ -13,9 +13,9 @@ import {
   Calculator,
   Monitor,
   Moon,
-  Sun
+  Sun,
+  Brain
 } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
 import { STOCK_LIST, TH_STOCKS, US_STOCKS } from './constants/stockList';
 import { TradingChart } from './components/TradingChart';
 import { Legend } from './components/Legend';
@@ -25,6 +25,7 @@ import { StockNotebook } from './components/StockNotebook';
 import { MarketDetails } from './components/MarketDetails';
 import { WhatIfBox } from './components/WhatIfBox';
 import { FinancialIndicators } from './components/FinancialIndicators';
+import { GeminiModal } from './components/GeminiModal';
 import { Logo } from './components/Logo';
 import { calculateCompositeMoneyFlow, calculateVWAP, calculateEMA } from './services/indicatorService';
 import { simulateGoldenCross } from './services/simulationService';
@@ -61,6 +62,66 @@ export default function App() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [marketFilter, setMarketFilter] = useState<'ALL' | 'TH' | 'US'>('ALL');
   const deferredSearchInput = useDeferredValue(searchInput);
+
+  // Gemini State
+  const [geminiModalOpen, setGeminiModalOpen] = useState(false);
+  const [geminiLoading, setGeminiLoading] = useState(false);
+  const [geminiError, setGeminiError] = useState<string | null>(null);
+  const [geminiAnalysis, setGeminiAnalysis] = useState<any | null>(null);
+  const [geminiTargetDate, setGeminiTargetDate] = useState<string>('');
+  const [geminiUsage, setGeminiUsage] = useState<{ count: number; limit: number } | null>(null);
+
+  // Context Menu State
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, data: any } | null>(null);
+
+  const fetchGeminiUsage = async () => {
+    try {
+      const response = await fetch('/api/usage/gemini_news');
+      if (response.ok) {
+        const data = await response.json();
+        setGeminiUsage(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch usage:', err);
+    }
+  };
+
+  useEffect(() => {
+    const handleClickOutside = () => setContextMenu(null);
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  const handleGeminiAnalysis = async (data: any) => {
+    setGeminiModalOpen(true);
+    setGeminiLoading(true);
+    setGeminiError(null);
+    setGeminiAnalysis(null);
+    setGeminiTargetDate(new Date(data.date).toISOString().split('T')[0]);
+
+    try {
+      const response = await fetch('/api/gemini/news', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol,
+          date: new Date(data.date).toISOString().split('T')[0]
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to fetch Gemini analysis');
+      }
+
+      const result = await response.json();
+      setGeminiAnalysis(result);
+    } catch (err: any) {
+      setGeminiError(err.message);
+    } finally {
+      setGeminiLoading(false);
+    }
+  };
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') as 'light' | 'dark';
@@ -637,10 +698,56 @@ export default function App() {
                     showEMAX={showEMAX}
                     chartType={chartType}
                     onHover={setHoveredData}
+                    onRightClick={(data, x, y) => {
+                      setContextMenu({ x, y, data });
+                      fetchGeminiUsage();
+                    }}
                     resetTrigger={resetTrigger}
                     isSimulationMode={isSimulationMode}
                     theme={theme}
                   />
+
+                  {/* Context Menu */}
+                  {contextMenu && (
+                    <div 
+                      className={cn(
+                        "fixed z-[100] w-56 py-2 rounded-xl border shadow-2xl transition-all",
+                        theme === 'dark' ? "bg-[#1e293b] border-zinc-800" : "bg-white border-zinc-200"
+                      )}
+                      style={{ left: contextMenu.x, top: contextMenu.y }}
+                    >
+                      <button
+                        onClick={() => {
+                          handleGeminiAnalysis(contextMenu.data);
+                          setContextMenu(null);
+                        }}
+                        className={cn(
+                          "w-full px-4 py-3 text-left transition-colors group",
+                          theme === 'dark' ? "hover:bg-zinc-800" : "hover:bg-zinc-100"
+                        )}
+                      >
+                        <div className="flex items-center gap-3 mb-1">
+                          <Brain className="w-4 h-4 text-rose-500" />
+                          <span className={cn("text-xs font-bold uppercase tracking-widest", theme === 'dark' ? "text-zinc-300" : "text-zinc-600")}>
+                            หาข่าวด้วย Gemini
+                          </span>
+                        </div>
+                        {geminiUsage && (
+                          <div className="flex items-center justify-between pl-7">
+                            <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">โควต้าวันนี้</span>
+                            <span className={cn(
+                              "text-[9px] font-black px-1.5 py-0.5 rounded",
+                              geminiUsage.count >= geminiUsage.limit 
+                                ? "bg-rose-500/10 text-rose-500" 
+                                : "bg-emerald-500/10 text-emerald-500"
+                            )}>
+                              เหลือ {geminiUsage.limit - geminiUsage.count} / {geminiUsage.limit}
+                            </span>
+                          </div>
+                        )}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1023,6 +1130,17 @@ export default function App() {
           </div>
         )}
       </main>
+      {/* Gemini Modal */}
+      <GeminiModal 
+        isOpen={geminiModalOpen}
+        onClose={() => setGeminiModalOpen(false)}
+        symbol={symbol}
+        date={geminiTargetDate}
+        loading={geminiLoading}
+        error={geminiError}
+        analysis={geminiAnalysis}
+        theme={theme}
+      />
     </div>
   );
 }
