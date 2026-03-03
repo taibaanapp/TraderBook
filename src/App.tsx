@@ -26,6 +26,8 @@ import { MarketDetails } from './components/MarketDetails';
 import { WhatIfBox } from './components/WhatIfBox';
 import { FinancialIndicators } from './components/FinancialIndicators';
 import { GeminiModal } from './components/GeminiModal';
+import { StockProfile } from './components/StockProfile';
+import { TradingViewWidget, mapSymbolToTV, mapSymbolFromTV } from './components/TradingViewWidget';
 import { Logo } from './components/Logo';
 import { calculateCompositeMoneyFlow, calculateVWAP, calculateEMA } from './services/indicatorService';
 import { simulateGoldenCross } from './services/simulationService';
@@ -70,6 +72,66 @@ export default function App() {
   const [geminiAnalysis, setGeminiAnalysis] = useState<any | null>(null);
   const [geminiTargetDate, setGeminiTargetDate] = useState<string>('');
   const [geminiUsage, setGeminiUsage] = useState<{ count: number; limit: number } | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [tvSymbol, setTvSymbol] = useState(symbol);
+  const [customStocks, setCustomStocks] = useState<any[]>([]);
+  const [stockProfile, setStockProfile] = useState<any | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [currentTime, setCurrentTime] = useState(new Date());
+  
+  // Collapsible states
+  const [isProfileExpanded, setIsProfileExpanded] = useState(true);
+  const [isSimulationExpanded, setIsSimulationExpanded] = useState(true);
+  const [isFinancialsExpanded, setIsFinancialsExpanded] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const fetchCustomStocks = async () => {
+      try {
+        const response = await fetch('/api/stocks');
+        if (response.ok) {
+          const data = await response.json();
+          setCustomStocks(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch custom stocks:', err);
+      }
+    };
+    fetchCustomStocks();
+  }, []);
+
+  const fetchStockProfile = async (targetSymbol: string) => {
+    setProfileLoading(true);
+    try {
+      const response = await fetch(`/api/stock/profile/${targetSymbol}`);
+      if (response.ok) {
+        const data = await response.json();
+        setStockProfile(data);
+      } else if (response.status === 429) {
+        const data = await response.json();
+        // If we have an error message from the server (limit reached), we can show it
+        // For now, we'll just set the profile to null or a special state if needed
+        console.warn(data.error);
+        setStockProfile(null);
+      }
+    } catch (err) {
+      console.error('Failed to fetch stock profile:', err);
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStockProfile(symbol);
+  }, [symbol]);
+
+  useEffect(() => {
+    setTvSymbol(symbol);
+  }, [symbol]);
 
   // Context Menu State
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, data: any } | null>(null);
@@ -329,6 +391,26 @@ export default function App() {
       const data = await response.json();
       setStockData(data);
       
+      // Save to custom stocks if not in predefined list
+      const isPredefined = STOCK_LIST.some(s => s.symbol === targetSymbol);
+      if (!isPredefined) {
+        await fetch('/api/stocks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            symbol: targetSymbol,
+            name: data.shortName || targetSymbol,
+            market: targetSymbol.endsWith('.BK') ? 'TH' : 'US'
+          })
+        });
+        // Refresh custom stocks
+        const res = await fetch('/api/stocks');
+        if (res.ok) {
+          const customData = await res.json();
+          setCustomStocks(customData);
+        }
+      }
+      
       // Cache the result using IndexedDB and pruning
       await saveStockData(targetSymbol, targetInterval, data);
     } catch (err: any) {
@@ -339,16 +421,41 @@ export default function App() {
     }
   };
 
+  const handleTVSymbolChange = (newTVSymbol: string) => {
+    const mappedSymbol = mapSymbolFromTV(newTVSymbol);
+    setTvSymbol(mappedSymbol);
+  };
+
+  const handleExitFullscreen = () => {
+    if (tvSymbol !== symbol) {
+      setSymbol(tvSymbol);
+      setSearchInput(tvSymbol);
+      fetchData(tvSymbol, interval);
+    }
+    setIsFullscreen(false);
+  };
+
   const suggestions = useMemo(() => {
     if (!deferredSearchInput.trim()) return [];
     const query = deferredSearchInput.toLowerCase();
+    
     const baseList = marketFilter === 'ALL' ? STOCK_LIST : (marketFilter === 'TH' ? TH_STOCKS : US_STOCKS);
     
-    return baseList.filter(s => 
+    // Merge custom stocks
+    const mergedList = [...baseList];
+    customStocks.forEach(cs => {
+      if (!mergedList.some(s => s.symbol === cs.symbol)) {
+        if (marketFilter === 'ALL' || marketFilter === cs.market) {
+          mergedList.push(cs);
+        }
+      }
+    });
+    
+    return mergedList.filter(s => 
       s.symbol.toLowerCase().includes(query) || 
       s.name.toLowerCase().includes(query)
     ).slice(0, 8);
-  }, [deferredSearchInput, marketFilter]);
+  }, [deferredSearchInput, marketFilter, customStocks]);
 
   useEffect(() => {
     fetchData(symbol, interval);
@@ -558,14 +665,30 @@ export default function App() {
             )}
           </form>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-6">
+            <div className="hidden lg:flex flex-col items-end">
+              <p className={cn("text-[10px] font-black uppercase tracking-[0.25em]", theme === 'dark' ? "text-zinc-500" : "text-zinc-400")}>
+                System Time
+              </p>
+              <p className={cn("text-sm font-black font-mono tracking-tight", theme === 'dark' ? "text-zinc-100" : "text-zinc-900")}>
+                {currentTime.toLocaleString('th-TH', { 
+                  year: 'numeric', 
+                  month: 'short', 
+                  day: 'numeric', 
+                  hour: '2-digit', 
+                  minute: '2-digit', 
+                  second: '2-digit',
+                  hour12: false 
+                })}
+              </p>
+            </div>
             <button
               onClick={toggleTheme}
               className={cn(
-                "p-2 rounded-xl border transition-all",
+                "p-2.5 rounded-2xl border transition-all shadow-sm hover:shadow-md active:scale-95",
                 theme === 'dark' 
                   ? "bg-zinc-800 border-zinc-700 text-amber-400 hover:bg-zinc-700" 
-                  : "bg-zinc-100 border-zinc-200 text-zinc-500 hover:bg-zinc-200"
+                  : "bg-white border-zinc-200 text-zinc-500 hover:bg-zinc-50"
               )}
             >
               {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
@@ -622,12 +745,13 @@ export default function App() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* Left Sidebar */}
             <div className="lg:col-span-2 space-y-6">
-              <Legend theme={theme} />
-              <WhatIfBox 
-                result={simulationResult}
-                currency={stockData?.currency}
-                interval={interval}
-                theme={theme}
+              <StockProfile 
+                theme={theme} 
+                data={stockProfile} 
+                loading={profileLoading} 
+                symbol={symbol} 
+                isExpanded={isProfileExpanded}
+                onToggle={() => setIsProfileExpanded(!isProfileExpanded)}
               />
               <StockNotebook 
                 symbol={symbol} 
@@ -675,9 +799,10 @@ export default function App() {
               {/* Chart */}
               <div className={cn(
                 "rounded-2xl border p-6 h-[500px] relative overflow-hidden group transition-colors duration-300",
-                theme === 'dark' ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200"
+                theme === 'dark' ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200",
+                isFullscreen && "fixed inset-0 z-[100] h-screen w-screen rounded-none p-0"
               )}>
-                {loading && (
+                {loading && !isFullscreen && (
                   <div className={cn(
                     "absolute inset-0 backdrop-blur-[2px] z-20 flex items-center justify-center",
                     theme === 'dark' ? "bg-zinc-900/60" : "bg-white/60"
@@ -690,22 +815,75 @@ export default function App() {
                 )}
                 
                 <div className="h-full w-full relative">
-                  <TradingChart 
-                    data={processedData} 
-                    showVWAP={showVWAP} 
-                    showOBV={showOBV} 
-                    showVolume={showVolume}
-                    showEMAX={showEMAX}
-                    chartType={chartType}
-                    onHover={setHoveredData}
-                    onRightClick={(data, x, y) => {
-                      setContextMenu({ x, y, data });
-                      fetchGeminiUsage();
-                    }}
-                    resetTrigger={resetTrigger}
-                    isSimulationMode={isSimulationMode}
-                    theme={theme}
-                  />
+                  {isFullscreen ? (
+                    <div className="h-full w-full">
+                      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[110] flex items-center gap-3">
+                        <button 
+                          onClick={handleExitFullscreen}
+                          className="bg-rose-600 text-white px-6 py-2.5 rounded-xl shadow-2xl hover:bg-rose-700 transition-all flex items-center gap-2 font-bold text-xs uppercase tracking-widest border border-rose-500/50 backdrop-blur-md"
+                        >
+                          <X className="w-4 h-4" />
+                          <span>Exit Fullscreen</span>
+                        </button>
+                        <div className="h-8 w-[1px] bg-white/20" />
+                        <div className={cn(
+                          "px-4 py-2 rounded-xl backdrop-blur-md border flex items-center gap-3 shadow-2xl",
+                          theme === 'dark' ? "bg-zinc-900/80 border-zinc-700" : "bg-white/80 border-zinc-200"
+                        )}>
+                          <span className={cn("text-[10px] font-black uppercase tracking-widest", theme === 'dark' ? "text-zinc-400" : "text-zinc-500")}>
+                            Current: <span className={theme === 'dark' ? "text-rose-400" : "text-rose-600"}>{tvSymbol}</span>
+                          </span>
+                          <button 
+                            onClick={() => fetchData(tvSymbol, interval)}
+                            className={cn(
+                              "p-1.5 rounded-lg transition-all hover:scale-110 active:scale-95",
+                              theme === 'dark' ? "bg-zinc-800 text-zinc-300 hover:text-white" : "bg-zinc-100 text-zinc-600 hover:text-zinc-900"
+                            )}
+                            title="Sync Data"
+                          >
+                            <RefreshCcw className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      <TradingViewWidget 
+                        symbol={symbol} 
+                        theme={theme} 
+                        onSymbolChange={handleTVSymbolChange}
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="absolute top-0 right-0 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button 
+                          onClick={() => setIsFullscreen(true)}
+                          className={cn(
+                            "p-2 rounded-xl border m-2 shadow-sm transition-all",
+                            theme === 'dark' ? "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-100" : "bg-white border-zinc-200 text-zinc-500 hover:text-zinc-900"
+                          )}
+                          title="Advanced Chart"
+                        >
+                          <Monitor className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <TradingChart 
+                        symbol={symbol}
+                        data={processedData} 
+                        showVWAP={showVWAP} 
+                        showOBV={showOBV} 
+                        showVolume={showVolume}
+                        showEMAX={showEMAX}
+                        chartType={chartType}
+                        onHover={setHoveredData}
+                        onRightClick={(data, x, y) => {
+                          setContextMenu({ x, y, data });
+                          fetchGeminiUsage();
+                        }}
+                        resetTrigger={resetTrigger}
+                        isSimulationMode={isSimulationMode}
+                        theme={theme}
+                      />
+                    </>
+                  )}
 
                   {/* Context Menu */}
                   {contextMenu && (
@@ -751,15 +929,30 @@ export default function App() {
                 </div>
               </div>
 
-              <FinancialIndicators symbol={symbol} theme={theme} />
+              <WhatIfBox 
+                result={simulationResult}
+                currency={stockData?.currency}
+                interval={interval}
+                theme={theme}
+                layout="horizontal"
+                isExpanded={isSimulationExpanded}
+                onToggle={() => setIsSimulationExpanded(!isSimulationExpanded)}
+              />
+
+              <FinancialIndicators 
+                symbol={symbol} 
+                theme={theme} 
+                isExpanded={isFinancialsExpanded}
+                onToggle={() => setIsFinancialsExpanded(!isFinancialsExpanded)}
+              />
             </div>
 
             {/* Right Sidebar */}
             <div className="lg:col-span-3 space-y-6">
               <MarketDetails 
-                data={hoveredData}
-                latestData={processedData[processedData.length - 1]}
-                currency={stockData?.currency}
+                symbol={symbol}
+                data={stockData}
+                hoveredData={hoveredData}
                 theme={theme}
               />
 

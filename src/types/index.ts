@@ -21,6 +21,9 @@ export interface ApiResponse {
   symbol: string;
   currency: string;
   data: StockData[];
+  shortName?: string;
+  industry?: string;
+  marketState?: string;
 }
 
 export interface Transaction {

@@ -42,6 +42,16 @@ db.exec(`
     count INTEGER,
     PRIMARY KEY (api_name, usage_date)
   );
+  CREATE TABLE IF NOT EXISTS custom_stocks (
+    symbol TEXT PRIMARY KEY,
+    name TEXT,
+    market TEXT
+  );
+  CREATE TABLE IF NOT EXISTS stock_profiles (
+    symbol TEXT PRIMARY KEY,
+    data TEXT,
+    timestamp INTEGER
+  );
 `);
 
 const CACHE_TTL = {
@@ -119,6 +129,121 @@ async function startServer() {
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: 'Failed to delete note' });
+    }
+  });
+
+  app.get("/api/stocks", (req, res) => {
+    try {
+      const customStocks = db.prepare('SELECT * FROM custom_stocks').all();
+      res.json(customStocks);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch custom stocks' });
+    }
+  });
+
+  app.post("/api/stocks", (req, res) => {
+    const { symbol, name, market } = req.body;
+    try {
+      db.prepare('INSERT OR REPLACE INTO custom_stocks (symbol, name, market) VALUES (?, ?, ?)').run(
+        symbol.toUpperCase(), name, market
+      );
+      res.status(201).json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to save custom stock' });
+    }
+  });
+
+  app.get("/api/stock/profile/:symbol", async (req, res) => {
+    const { symbol } = req.params;
+    const apiKey = process.env.GeNews_api;
+    const today = new Date().toISOString().split('T')[0];
+
+    if (!apiKey) {
+      return res.status(500).json({ error: "GeNews_api is not configured." });
+    }
+
+    try {
+      // 1. Check Cache
+      const cached = db.prepare('SELECT data, timestamp FROM stock_profiles WHERE symbol = ?').get(symbol) as { data: string, timestamp: number } | undefined;
+      
+      // Cache TTL: 90 days (approx. quarterly earnings cycle)
+      const NINETY_DAYS = 90 * 24 * 60 * 60 * 1000;
+      if (cached && (Date.now() - cached.timestamp < NINETY_DAYS)) {
+        return res.json(JSON.parse(cached.data));
+      }
+
+      // 2. Check Daily Limit (10 per day for new/expired profiles)
+      const usage = db.prepare('SELECT count FROM api_usage WHERE api_name = ? AND usage_date = ?').get('stock_profile', today) as { count: number } | undefined;
+      
+      if (usage && usage.count >= 10) {
+        // If we have old cached data, return it even if expired, rather than failing
+        if (cached) {
+          return res.json(JSON.parse(cached.data));
+        }
+        return res.status(429).json({ error: "Daily limit for new stock insights reached (10/day). Please try again tomorrow." });
+      }
+
+      // 3. Call Gemini
+      const prompt = `Provide a detailed business profile for the stock symbol ${symbol}. 
+      Include the following information in Thai:
+      1. Business Description (ทำอะไร)
+      2. Main Revenue Sources and Countries (รายได้หลักจากอะไร จากประเทศใด)
+      3. Main Competitors (คู่แข่งคือหุ้นตัวใด)
+      4. Recent Management Outlook/Comments (ล่าสุดผู้บริหารให้ความเห็นไปในทิศทางใด)
+      
+      Format the response in JSON with the following keys: "description", "revenue", "competitors", "outlook". 
+      The values should be strings or arrays of strings as appropriate. Use professional Thai language.`;
+
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+      
+      const response = await fetch(geminiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "OBJECT",
+              properties: {
+                description: { type: "STRING" },
+                revenue: { type: "STRING" },
+                competitors: { type: "ARRAY", items: { type: "STRING" } },
+                outlook: { type: "STRING" }
+              },
+              required: ["description", "revenue", "competitors", "outlook"]
+            }
+          }
+        })
+      });
+
+      if (!response.ok) {
+        if (cached) return res.json(JSON.parse(cached.data));
+        throw new Error("Failed to fetch from Gemini");
+      }
+
+      const result = await response.json();
+      const contentText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!contentText) throw new Error("Empty response from Gemini");
+      
+      const content = JSON.parse(contentText);
+
+      // 4. Save to Cache
+      db.prepare('INSERT OR REPLACE INTO stock_profiles (symbol, data, timestamp) VALUES (?, ?, ?)').run(
+        symbol, JSON.stringify(content), Date.now()
+      );
+
+      // 5. Update Usage
+      if (usage) {
+        db.prepare('UPDATE api_usage SET count = count + 1 WHERE api_name = ? AND usage_date = ?').run('stock_profile', today);
+      } else {
+        db.prepare('INSERT INTO api_usage (api_name, usage_date, count) VALUES (?, ?, ?)').run('stock_profile', today, 1);
+      }
+
+      res.json(content);
+    } catch (error: any) {
+      console.error("Stock Profile Error:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
@@ -563,12 +688,18 @@ async function startServer() {
       const responseData = {
         symbol: chartResult.meta.symbol,
         currency: chartResult.meta.currency,
+        fullExchangeName: quoteResult?.fullExchangeName,
+        shortName: quoteResult?.shortName || quoteResult?.longName,
+        industry: quoteResult?.industry || quoteResult?.sector,
+        marketState: quoteResult?.marketState,
         data: chartData,
         fundamentals: {
           eps,
           bookValue,
           trailingPE: quoteResult?.trailingPE,
-          priceToBook: quoteResult?.priceToBook
+          priceToBook: quoteResult?.priceToBook,
+          marketCap: quoteResult?.marketCap,
+          averageVolume: quoteResult?.averageDailyVolume3Month
         }
       };
 

@@ -1,10 +1,13 @@
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect, useMemo, useImperativeHandle, forwardRef } from 'react';
 import * as d3 from 'd3';
 import { format } from 'date-fns';
 import { StockData } from '../types';
 import { cn } from '../utils/cn';
+import { Camera, Download } from 'lucide-react';
+import { domToPng } from 'modern-screenshot';
 
 interface ChartProps {
+  symbol: string;
   data: StockData[];
   showVWAP: boolean;
   showOBV: boolean;
@@ -18,7 +21,12 @@ interface ChartProps {
   theme?: 'light' | 'dark';
 }
 
-export const TradingChart: React.FC<ChartProps> = ({
+export interface TradingChartHandle {
+  saveAsImage: () => void;
+}
+
+export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
+  symbol,
   data,
   showVWAP,
   showOBV,
@@ -30,7 +38,7 @@ export const TradingChart: React.FC<ChartProps> = ({
   resetTrigger,
   isSimulationMode,
   theme
-}) => {
+}, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const isDark = theme === 'dark';
@@ -44,6 +52,110 @@ export const TradingChart: React.FC<ChartProps> = ({
   });
 
   const lastResetRef = useRef(0);
+
+  const saveAsImage = async () => {
+    if (!containerRef.current) return;
+    
+    try {
+      // Create a temporary container for the export to add branding and info
+      const exportContainer = containerRef.current.cloneNode(true) as HTMLDivElement;
+      exportContainer.style.position = 'fixed';
+      exportContainer.style.top = '-9999px';
+      exportContainer.style.left = '-9999px';
+      exportContainer.style.width = containerRef.current.offsetWidth + 'px';
+      exportContainer.style.height = containerRef.current.offsetHeight + 'px';
+      document.body.appendChild(exportContainer);
+
+      // Add branding and info overlay
+      const overlay = document.createElement('div');
+      overlay.style.position = 'absolute';
+      overlay.style.bottom = '10px';
+      overlay.style.right = '20px';
+      overlay.style.textAlign = 'right';
+      overlay.style.pointerEvents = 'none';
+      overlay.style.zIndex = '100';
+      
+      const brand = document.createElement('div');
+      brand.innerText = 'CrossVision';
+      brand.style.fontSize = '24px';
+      brand.style.fontWeight = '900';
+      brand.style.color = isDark ? '#fff' : '#000';
+      brand.style.opacity = '0.8';
+      brand.style.letterSpacing = '-1px';
+      
+      const subBrand = document.createElement('div');
+      subBrand.innerText = 'See the Cross before it happens.';
+      subBrand.style.fontSize = '10px';
+      subBrand.style.fontWeight = '700';
+      subBrand.style.color = '#f43f5e';
+      subBrand.style.textTransform = 'uppercase';
+      subBrand.style.letterSpacing = '1px';
+
+      overlay.appendChild(brand);
+      overlay.appendChild(subBrand);
+      exportContainer.appendChild(overlay);
+
+      // Add Stock Info
+      const info = document.createElement('div');
+      info.style.position = 'absolute';
+      info.style.top = '20px';
+      info.style.left = '20px';
+      info.style.zIndex = '100';
+      
+      const stockName = document.createElement('div');
+      stockName.innerText = symbol;
+      stockName.style.fontSize = '32px';
+      stockName.style.fontWeight = '900';
+      stockName.style.color = isDark ? '#fff' : '#000';
+      
+      const timestamp = document.createElement('div');
+      timestamp.innerText = format(new Date(), 'dd MMM yyyy HH:mm:ss');
+      timestamp.style.fontSize = '12px';
+      timestamp.style.fontWeight = '700';
+      timestamp.style.color = '#94a3b8';
+      timestamp.style.marginTop = '4px';
+
+      const indicators = document.createElement('div');
+      const activeIndicators = [];
+      if (showVWAP) activeIndicators.push('VWAP');
+      if (showEMAX) activeIndicators.push('EMA 50/135');
+      if (showOBV) activeIndicators.push('OBV');
+      if (showVolume) activeIndicators.push('Volume');
+      indicators.innerText = 'Indicators: ' + (activeIndicators.length > 0 ? activeIndicators.join(', ') : 'None');
+      indicators.style.fontSize = '10px';
+      indicators.style.fontWeight = '700';
+      indicators.style.color = '#94a3b8';
+      indicators.style.textTransform = 'uppercase';
+      indicators.style.marginTop = '4px';
+
+      info.appendChild(stockName);
+      info.appendChild(timestamp);
+      info.appendChild(indicators);
+      exportContainer.appendChild(info);
+
+      const dataUrl = await domToPng(exportContainer, {
+        backgroundColor: isDark ? '#09090b' : '#ffffff',
+        scale: 2, // Higher quality
+        features: {
+          // Ensure we capture all styles
+          copyStyles: true
+        }
+      });
+
+      const link = document.createElement('a');
+      link.download = `CrossVision_${symbol}_${format(new Date(), 'yyyyMMdd_HHmmss')}.png`;
+      link.href = dataUrl;
+      link.click();
+      
+      document.body.removeChild(exportContainer);
+    } catch (err) {
+      console.error('Failed to save chart:', err);
+    }
+  };
+
+  useImperativeHandle(ref, () => ({
+    saveAsImage
+  }));
 
   useEffect(() => {
     if (!containerRef.current || !svgRef.current || data.length === 0) return;
@@ -119,6 +231,19 @@ export const TradingChart: React.FC<ChartProps> = ({
       .attr('height', mainAreaHeight);
 
     const g = svg.append('g');
+    
+    // Watermark
+    g.append('text')
+      .attr('x', width / 2)
+      .attr('y', mainAreaHeight / 2 + margin.top)
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'central')
+      .attr('class', cn(
+        "text-[120px] font-black uppercase tracking-tighter select-none pointer-events-none opacity-[0.03]",
+        isDark ? "fill-white" : "fill-black"
+      ))
+      .text(symbol);
+
     const chartContent = g.append('g').attr('clip-path', 'url(#main-clip)');
 
     // Grid lines
@@ -433,7 +558,21 @@ export const TradingChart: React.FC<ChartProps> = ({
   }, [data, showVWAP, showOBV, showVolume, showEMAX, chartType, resetTrigger, theme]);
 
   return (
-    <div ref={containerRef} className="w-full h-full relative">
+    <div ref={containerRef} className="w-full h-full relative trading-chart-container">
+      <div className="absolute top-4 right-4 z-30 flex items-center gap-2">
+        <button 
+          onClick={saveAsImage}
+          className={cn(
+            "p-2 rounded-xl border shadow-sm transition-all flex items-center gap-2 group",
+            isDark ? "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-100" : "bg-white border-zinc-200 text-zinc-500 hover:text-zinc-900"
+          )}
+          title="Save Chart as Image"
+        >
+          <Camera className="w-4 h-4" />
+          <span className="text-[10px] font-black uppercase tracking-widest hidden group-hover:block">Save Image</span>
+        </button>
+      </div>
+
       {isSimulationMode && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
           <div className="bg-rose-600 text-white px-6 py-2 rounded-full text-[11px] font-black uppercase tracking-[0.25em] shadow-2xl shadow-rose-900/50 flex items-center gap-3 animate-pulse border-2 border-white/20">
@@ -448,4 +587,4 @@ export const TradingChart: React.FC<ChartProps> = ({
       )} />
     </div>
   );
-};
+});
