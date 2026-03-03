@@ -24,6 +24,15 @@ export interface ApiResponse {
   shortName?: string;
   industry?: string;
   marketState?: string;
+  fullExchangeName?: string;
+  fundamentals?: {
+    eps?: number;
+    bookValue?: number;
+    trailingPE?: number;
+    priceToBook?: number;
+    marketCap?: number;
+    averageVolume?: number;
+  };
 }
 
 export interface Transaction {

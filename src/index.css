@@ -64,6 +64,14 @@
   .dark body {
     @apply bg-[#0f172a] text-zinc-100;
   }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 }
 
 /* Custom scrollbar for dark mode */

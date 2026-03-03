@@ -14,7 +14,9 @@ import {
   Monitor,
   Moon,
   Sun,
-  Brain
+  Brain,
+  Activity,
+  Settings
 } from 'lucide-react';
 import { STOCK_LIST, TH_STOCKS, US_STOCKS } from './constants/stockList';
 import { TradingChart } from './components/TradingChart';
@@ -27,10 +29,14 @@ import { WhatIfBox } from './components/WhatIfBox';
 import { FinancialIndicators } from './components/FinancialIndicators';
 import { GeminiModal } from './components/GeminiModal';
 import { StockProfile } from './components/StockProfile';
-import { TradingViewWidget, mapSymbolToTV, mapSymbolFromTV } from './components/TradingViewWidget';
+import { ReversalBox } from './components/ReversalBox';
+import { SettingsModal } from './components/SettingsModal';
+import { ReversalDashboard } from './components/ReversalDashboard';
 import { Logo } from './components/Logo';
 import { calculateCompositeMoneyFlow, calculateVWAP, calculateEMA } from './services/indicatorService';
+import { analyzeReversal } from './services/reversalService';
 import { simulateGoldenCross } from './services/simulationService';
+import { calculateSmartSR, SRZone } from './services/smartSRService';
 import { getStockData, saveStockData } from './services/storageService';
 import { getFlag, formatCurrency } from './utils/formatters';
 import { cn } from './utils/cn';
@@ -73,7 +79,6 @@ export default function App() {
   const [geminiTargetDate, setGeminiTargetDate] = useState<string>('');
   const [geminiUsage, setGeminiUsage] = useState<{ count: number; limit: number } | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [tvSymbol, setTvSymbol] = useState(symbol);
   const [customStocks, setCustomStocks] = useState<any[]>([]);
   const [stockProfile, setStockProfile] = useState<any | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -83,6 +88,56 @@ export default function App() {
   const [isProfileExpanded, setIsProfileExpanded] = useState(true);
   const [isSimulationExpanded, setIsSimulationExpanded] = useState(true);
   const [isFinancialsExpanded, setIsFinancialsExpanded] = useState(false);
+  const [isAiInsightEnabled, setIsAiInsightEnabled] = useState(false);
+  
+  // Modal states
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isDashboardOpen, setIsDashboardOpen] = useState(false);
+
+  // Smart S/R State
+  const [isSmartSRMode, setIsSmartSRMode] = useState(false);
+  const [isLogScale, setIsLogScale] = useState(false);
+  const [selectedSRDate, setSelectedSRDate] = useState<string | null>(null);
+  const [revealIndex, setRevealIndex] = useState(0);
+  const [isRevealing, setIsRevealing] = useState(false);
+
+  const srResult = useMemo(() => {
+    if (!isSmartSRMode || !selectedSRDate || !stockData?.data) return { zones: [] };
+    return calculateSmartSR(stockData.data, selectedSRDate);
+  }, [isSmartSRMode, selectedSRDate, stockData]);
+
+  const srZones = srResult.zones;
+  const srGuidance = srResult.guidance;
+
+  useEffect(() => {
+    if (isSmartSRMode) {
+      setChartType('candlestick');
+      setIsSimulationMode(false);
+    } else {
+      setSelectedSRDate(null);
+      setRevealIndex(0);
+      setIsRevealing(false);
+    }
+  }, [isSmartSRMode]);
+
+  useEffect(() => {
+    let timer: any;
+    if (isRevealing && stockData?.data && selectedSRDate) {
+      const selectedIdx = stockData.data.findIndex(d => d.date === selectedSRDate);
+      const totalToReveal = stockData.data.length - 1 - selectedIdx;
+      
+      timer = window.setInterval(() => {
+        setRevealIndex(prev => {
+          if (prev >= totalToReveal) {
+            setIsRevealing(false);
+            return prev;
+          }
+          return prev + 1;
+        });
+      }, 200); // Slower, more visible speed
+    }
+    return () => window.clearInterval(timer);
+  }, [isRevealing, stockData, selectedSRDate]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setCurrentTime(new Date()), 1000);
@@ -104,17 +159,19 @@ export default function App() {
     fetchCustomStocks();
   }, []);
 
-  const fetchStockProfile = async (targetSymbol: string) => {
+  const fetchStockProfile = async (targetSymbol: string, exchangeName?: string) => {
+    if (!isAiInsightEnabled) return;
     setProfileLoading(true);
     try {
-      const response = await fetch(`/api/stock/profile/${targetSymbol}`);
+      const query = new URLSearchParams();
+      if (exchangeName) query.append('exchange', exchangeName);
+      
+      const response = await fetch(`/api/stock/profile/${targetSymbol}?${query.toString()}`);
       if (response.ok) {
         const data = await response.json();
         setStockProfile(data);
       } else if (response.status === 429) {
         const data = await response.json();
-        // If we have an error message from the server (limit reached), we can show it
-        // For now, we'll just set the profile to null or a special state if needed
         console.warn(data.error);
         setStockProfile(null);
       }
@@ -126,12 +183,12 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchStockProfile(symbol);
-  }, [symbol]);
-
-  useEffect(() => {
-    setTvSymbol(symbol);
-  }, [symbol]);
+    if (isAiInsightEnabled) {
+      fetchStockProfile(symbol, stockData?.fullExchangeName);
+    } else {
+      setStockProfile(null);
+    }
+  }, [symbol, isAiInsightEnabled, stockData?.fullExchangeName]);
 
   // Context Menu State
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, data: any } | null>(null);
@@ -421,20 +478,6 @@ export default function App() {
     }
   };
 
-  const handleTVSymbolChange = (newTVSymbol: string) => {
-    const mappedSymbol = mapSymbolFromTV(newTVSymbol);
-    setTvSymbol(mappedSymbol);
-  };
-
-  const handleExitFullscreen = () => {
-    if (tvSymbol !== symbol) {
-      setSymbol(tvSymbol);
-      setSearchInput(tvSymbol);
-      fetchData(tvSymbol, interval);
-    }
-    setIsFullscreen(false);
-  };
-
   const suggestions = useMemo(() => {
     if (!deferredSearchInput.trim()) return [];
     const query = deferredSearchInput.toLowerCase();
@@ -682,17 +725,44 @@ export default function App() {
                 })}
               </p>
             </div>
-            <button
-              onClick={toggleTheme}
-              className={cn(
-                "p-2.5 rounded-2xl border transition-all shadow-sm hover:shadow-md active:scale-95",
-                theme === 'dark' 
-                  ? "bg-zinc-800 border-zinc-700 text-amber-400 hover:bg-zinc-700" 
-                  : "bg-white border-zinc-200 text-zinc-500 hover:bg-zinc-50"
-              )}
-            >
-              {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsDashboardOpen(true)}
+                className={cn(
+                  "p-2.5 rounded-2xl border transition-all shadow-sm hover:shadow-md active:scale-95",
+                  theme === 'dark' 
+                    ? "bg-zinc-800 border-zinc-700 text-emerald-400 hover:bg-zinc-700" 
+                    : "bg-white border-zinc-200 text-emerald-500 hover:bg-zinc-50"
+                )}
+                title="Reversal Dashboard"
+              >
+                <Activity className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                className={cn(
+                  "p-2.5 rounded-2xl border transition-all shadow-sm hover:shadow-md active:scale-95",
+                  theme === 'dark' 
+                    ? "bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700" 
+                    : "bg-white border-zinc-200 text-zinc-500 hover:bg-zinc-50"
+                )}
+                title="Settings"
+              >
+                <Settings className="w-5 h-5" />
+              </button>
+              <button
+                onClick={toggleTheme}
+                className={cn(
+                  "p-2.5 rounded-2xl border transition-all shadow-sm hover:shadow-md active:scale-95",
+                  theme === 'dark' 
+                    ? "bg-zinc-800 border-zinc-700 text-amber-400 hover:bg-zinc-700" 
+                    : "bg-white border-zinc-200 text-zinc-500 hover:bg-zinc-50"
+                )}
+                title="Toggle Theme"
+              >
+                {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              </button>
+            </div>
 
             <div className={cn(
               "flex p-1 rounded-lg border gap-1",
@@ -752,6 +822,8 @@ export default function App() {
                 symbol={symbol} 
                 isExpanded={isProfileExpanded}
                 onToggle={() => setIsProfileExpanded(!isProfileExpanded)}
+                isAiEnabled={isAiInsightEnabled}
+                onToggleAi={() => setIsAiInsightEnabled(!isAiInsightEnabled)}
               />
               <StockNotebook 
                 symbol={symbol} 
@@ -786,11 +858,16 @@ export default function App() {
                 setShowVolume={setShowVolume}
                 showEMAX={showEMAX}
                 setShowEMAX={setShowEMAX}
+                isLogScale={isLogScale}
+                setIsLogScale={setIsLogScale}
                 isSimulationMode={isSimulationMode}
                 setIsSimulationMode={setIsSimulationMode}
+                isSmartSRMode={isSmartSRMode}
+                setIsSmartSRMode={setIsSmartSRMode}
                 onReset={() => {
                   setResetTrigger(prev => prev + 1);
                   setIsSimulationMode(false);
+                  setIsSmartSRMode(false);
                 }}
                 onRefresh={() => fetchData(symbol, interval, true)}
                 theme={theme}
@@ -815,75 +892,32 @@ export default function App() {
                 )}
                 
                 <div className="h-full w-full relative">
-                  {isFullscreen ? (
-                    <div className="h-full w-full">
-                      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[110] flex items-center gap-3">
-                        <button 
-                          onClick={handleExitFullscreen}
-                          className="bg-rose-600 text-white px-6 py-2.5 rounded-xl shadow-2xl hover:bg-rose-700 transition-all flex items-center gap-2 font-bold text-xs uppercase tracking-widest border border-rose-500/50 backdrop-blur-md"
-                        >
-                          <X className="w-4 h-4" />
-                          <span>Exit Fullscreen</span>
-                        </button>
-                        <div className="h-8 w-[1px] bg-white/20" />
-                        <div className={cn(
-                          "px-4 py-2 rounded-xl backdrop-blur-md border flex items-center gap-3 shadow-2xl",
-                          theme === 'dark' ? "bg-zinc-900/80 border-zinc-700" : "bg-white/80 border-zinc-200"
-                        )}>
-                          <span className={cn("text-[10px] font-black uppercase tracking-widest", theme === 'dark' ? "text-zinc-400" : "text-zinc-500")}>
-                            Current: <span className={theme === 'dark' ? "text-rose-400" : "text-rose-600"}>{tvSymbol}</span>
-                          </span>
-                          <button 
-                            onClick={() => fetchData(tvSymbol, interval)}
-                            className={cn(
-                              "p-1.5 rounded-lg transition-all hover:scale-110 active:scale-95",
-                              theme === 'dark' ? "bg-zinc-800 text-zinc-300 hover:text-white" : "bg-zinc-100 text-zinc-600 hover:text-zinc-900"
-                            )}
-                            title="Sync Data"
-                          >
-                            <RefreshCcw className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                      <TradingViewWidget 
-                        symbol={symbol} 
-                        theme={theme} 
-                        onSymbolChange={handleTVSymbolChange}
-                      />
-                    </div>
-                  ) : (
-                    <>
-                      <div className="absolute top-0 right-0 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={() => setIsFullscreen(true)}
-                          className={cn(
-                            "p-2 rounded-xl border m-2 shadow-sm transition-all",
-                            theme === 'dark' ? "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-100" : "bg-white border-zinc-200 text-zinc-500 hover:text-zinc-900"
-                          )}
-                          title="Advanced Chart"
-                        >
-                          <Monitor className="w-4 h-4" />
-                        </button>
-                      </div>
-                      <TradingChart 
-                        symbol={symbol}
-                        data={processedData} 
-                        showVWAP={showVWAP} 
-                        showOBV={showOBV} 
-                        showVolume={showVolume}
-                        showEMAX={showEMAX}
-                        chartType={chartType}
-                        onHover={setHoveredData}
-                        onRightClick={(data, x, y) => {
-                          setContextMenu({ x, y, data });
-                          fetchGeminiUsage();
-                        }}
-                        resetTrigger={resetTrigger}
-                        isSimulationMode={isSimulationMode}
-                        theme={theme}
-                      />
-                    </>
-                  )}
+                  <TradingChart 
+                    symbol={symbol}
+                    data={processedData} 
+                    showVWAP={showVWAP} 
+                    showOBV={showOBV} 
+                    showVolume={showVolume}
+                    showEMAX={showEMAX}
+                    chartType={chartType}
+                    onHover={setHoveredData}
+                    onRightClick={(data, x, y) => {
+                      setContextMenu({ x, y, data });
+                      fetchGeminiUsage();
+                    }}
+                    resetTrigger={resetTrigger}
+                    isLogScale={isLogScale}
+                    isSimulationMode={isSimulationMode}
+                    isSmartSRMode={isSmartSRMode}
+                    selectedSRDate={selectedSRDate}
+                    onSelectSRDate={setSelectedSRDate}
+                    srZones={srZones}
+                    srGuidance={srGuidance}
+                    revealIndex={revealIndex}
+                    isRevealing={isRevealing}
+                    onToggleReveal={() => setIsRevealing(!isRevealing)}
+                    theme={theme}
+                  />
 
                   {/* Context Menu */}
                   {contextMenu && (
@@ -937,6 +971,14 @@ export default function App() {
                 layout="horizontal"
                 isExpanded={isSimulationExpanded}
                 onToggle={() => setIsSimulationExpanded(!isSimulationExpanded)}
+              />
+
+              <ReversalBox 
+                symbol={symbol}
+                analysis={stockData?.data ? analyzeReversal(stockData.data) : null}
+                currentPrice={latestPrice || 0}
+                currency={stockData?.currency}
+                theme={theme}
               />
 
               <FinancialIndicators 
@@ -1332,6 +1374,20 @@ export default function App() {
         loading={geminiLoading}
         error={geminiError}
         analysis={geminiAnalysis}
+        theme={theme}
+      />
+
+      <SettingsModal 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)} 
+        theme={theme}
+        isAiInsightEnabled={isAiInsightEnabled}
+        onToggleAiInsight={() => setIsAiInsightEnabled(!isAiInsightEnabled)}
+      />
+
+      <ReversalDashboard 
+        isOpen={isDashboardOpen} 
+        onClose={() => setIsDashboardOpen(false)} 
         theme={theme}
       />
     </div>

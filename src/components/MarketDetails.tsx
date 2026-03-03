@@ -106,7 +106,7 @@ export const MarketDetails: React.FC<MarketDetailsProps> = ({ symbol, data, hove
             <div className="flex items-center gap-2">
               <Globe className="w-4 h-4 text-zinc-400" />
               <span className="text-xs font-black text-zinc-400 uppercase tracking-widest">
-                Ind. P/E: <span className={isDark ? "text-zinc-100" : "text-zinc-900"}>18.5x</span>
+                P/E: <span className={isDark ? "text-zinc-100" : "text-zinc-900"}>{typeof data?.fundamentals?.trailingPE === 'number' ? `${data.fundamentals.trailingPE.toFixed(2)}x` : 'N/A'}</span>
               </span>
             </div>
           </div>

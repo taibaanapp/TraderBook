@@ -52,6 +52,22 @@ db.exec(`
     data TEXT,
     timestamp INTEGER
   );
+  CREATE TABLE IF NOT EXISTS predictions (
+    id TEXT PRIMARY KEY,
+    symbol TEXT,
+    date TEXT,
+    price REAL,
+    score REAL,
+    reasons TEXT,
+    stopLoss REAL,
+    hit5 INTEGER,
+    hit10 INTEGER,
+    hit20 INTEGER,
+    price5 REAL,
+    price10 REAL,
+    price20 REAL,
+    timestamp INTEGER
+  );
 `);
 
 const CACHE_TTL = {
@@ -155,6 +171,7 @@ async function startServer() {
 
   app.get("/api/stock/profile/:symbol", async (req, res) => {
     const { symbol } = req.params;
+    const { exchange } = req.query;
     const apiKey = process.env.GeNews_api;
     const today = new Date().toISOString().split('T')[0];
 
@@ -184,7 +201,9 @@ async function startServer() {
       }
 
       // 3. Call Gemini
-      const prompt = `Provide a detailed business profile for the stock symbol ${symbol}. 
+      const exchangeContext = exchange ? ` on the ${exchange} exchange` : '';
+      const prompt = `Provide a detailed business profile for the stock symbol ${symbol}${exchangeContext}. 
+      Make sure to identify the correct company based on the exchange if provided (e.g., if it's a Thai stock, focus on the Thai company).
       Include the following information in Thai:
       1. Business Description (ทำอะไร)
       2. Main Revenue Sources and Countries (รายได้หลักจากอะไร จากประเทศใด)
@@ -426,6 +445,100 @@ async function startServer() {
     res.json({ count: usage ? usage.count : 0, limit: 30 });
   });
 
+  // Reversal Analysis API
+  app.get("/api/reversal/predictions", (req, res) => {
+    try {
+      const predictions = db.prepare('SELECT * FROM predictions ORDER BY timestamp DESC').all();
+      res.json(predictions);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch predictions' });
+    }
+  });
+
+  app.post("/api/reversal/predictions", (req, res) => {
+    const { id, symbol, date, price, score, reasons, stopLoss } = req.body;
+    try {
+      db.prepare(`
+        INSERT OR REPLACE INTO predictions 
+        (id, symbol, date, price, score, reasons, stopLoss, timestamp) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, symbol, date, price, score, JSON.stringify(reasons), stopLoss, Date.now());
+      res.status(201).json({ success: true });
+    } catch (error) {
+      console.error('Save Prediction Error:', error);
+      res.status(500).json({ error: 'Failed to save prediction' });
+    }
+  });
+
+  app.get("/api/reversal/stats", (req, res) => {
+    try {
+      const stats = db.prepare(`
+        SELECT 
+          CASE 
+            WHEN score >= 80 THEN '80-100%'
+            WHEN score >= 70 THEN '70-79%'
+            ELSE '60-69%'
+          END as scoreGroup,
+          COUNT(*) as total,
+          SUM(CASE WHEN hit5 = 1 THEN 1 ELSE 0 END) as hits5,
+          SUM(CASE WHEN hit10 = 1 THEN 1 ELSE 0 END) as hits10,
+          SUM(CASE WHEN hit20 = 1 THEN 1 ELSE 0 END) as hits20
+        FROM predictions
+        WHERE hit5 IS NOT NULL
+        GROUP BY scoreGroup
+      `).all();
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch stats' });
+    }
+  });
+
+  // Background task to update prediction performance (can be called manually or periodically)
+  app.post("/api/reversal/track", async (req, res) => {
+    try {
+      const pending = db.prepare(`
+        SELECT * FROM predictions 
+        WHERE hit20 IS NULL 
+        AND timestamp < ?
+      `).all(Date.now() - 5 * 24 * 60 * 60 * 1000) as any[];
+
+      for (const pred of pending) {
+        try {
+          // Fetch historical data to check price after 5, 10, 20 days
+          const history = await yahooFinance.chart(pred.symbol, { period1: pred.date, interval: '1d' });
+          if (history && history.quotes) {
+            const quotes = history.quotes.filter(q => q.date > new Date(pred.date));
+            
+            const updateData: any = {};
+            if (quotes.length >= 5 && pred.hit5 === null) {
+              updateData.price5 = quotes[4].close;
+              updateData.hit5 = quotes[4].close > pred.price ? 1 : 0;
+            }
+            if (quotes.length >= 10 && pred.hit10 === null) {
+              updateData.price10 = quotes[9].close;
+              updateData.hit10 = quotes[9].close > pred.price ? 1 : 0;
+            }
+            if (quotes.length >= 20 && pred.hit20 === null) {
+              updateData.price20 = quotes[19].close;
+              updateData.hit20 = quotes[19].close > pred.price ? 1 : 0;
+            }
+
+            if (Object.keys(updateData).length > 0) {
+              const sets = Object.keys(updateData).map(k => `${k} = ?`).join(', ');
+              const values = Object.values(updateData);
+              db.prepare(`UPDATE predictions SET ${sets} WHERE id = ?`).run(...values, pred.id);
+            }
+          }
+        } catch (e) {
+          console.error(`Tracking error for ${pred.symbol}:`, e);
+        }
+      }
+      res.json({ success: true, processed: pending.length });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to track performance' });
+    }
+  });
+
   app.get("/api/financials/:symbol", async (req, res) => {
     const { symbol } = req.params;
     
@@ -600,12 +713,13 @@ async function startServer() {
       const indexSymbol = symbol.endsWith('.BK') ? '^SET.BK' : '^GSPC';
 
       // Fetch chart data, index data, and current fundamentals in parallel
-      let chartResult, indexResult, quoteResult;
+      let chartResult, indexResult, quoteResult, profileResult;
       try {
-        [chartResult, indexResult, quoteResult] = await Promise.all([
+        [chartResult, indexResult, quoteResult, profileResult] = await Promise.all([
           yahooFinance.chart(symbol, queryOptions) as Promise<any>,
           yahooFinance.chart(indexSymbol, queryOptions).catch(() => null) as Promise<any>,
-          yahooFinance.quote(symbol).catch(() => null) as Promise<any>
+          yahooFinance.quote(symbol).catch(() => null) as Promise<any>,
+          yahooFinance.quoteSummary(symbol, { modules: ['assetProfile'] }).catch(() => null) as Promise<any>
         ]);
       } catch (e: any) {
         console.error(`Yahoo Finance API Error for ${symbol}:`, e.message);
@@ -690,7 +804,7 @@ async function startServer() {
         currency: chartResult.meta.currency,
         fullExchangeName: quoteResult?.fullExchangeName,
         shortName: quoteResult?.shortName || quoteResult?.longName,
-        industry: quoteResult?.industry || quoteResult?.sector,
+        industry: profileResult?.assetProfile?.industry || quoteResult?.industry || quoteResult?.sector,
         marketState: quoteResult?.marketState,
         data: chartData,
         fundamentals: {
