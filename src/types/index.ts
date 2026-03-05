@@ -15,6 +15,10 @@ export interface StockData {
   pe: number | null;
   pb: number | null;
   isSimulated?: boolean;
+  rsi?: number;
+  macd?: number;
+  macdSignal?: number;
+  macdHistogram?: number;
 }
 
 export interface ApiResponse {

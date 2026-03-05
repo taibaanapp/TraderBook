@@ -3,9 +3,10 @@ import * as d3 from 'd3';
 import { format } from 'date-fns';
 import { StockData } from '../types';
 import { cn } from '../utils/cn';
-import { Download, Play, Pause, TrendingUp, HelpCircle } from 'lucide-react';
+import { Download, Play, Pause, TrendingUp, HelpCircle, Ghost, AlertTriangle, Target } from 'lucide-react';
 import { domToPng } from 'modern-screenshot';
 import { SRZone } from '../services/smartSRService';
+import { ScenarioResult } from '../services/scenarioService';
 
 interface ChartProps {
   symbol: string;
@@ -20,6 +21,8 @@ interface ChartProps {
   resetTrigger: number;
   isSimulationMode?: boolean;
   isSmartSRMode?: boolean;
+  isScenarioMode?: boolean;
+  scenarioResult?: ScenarioResult | null;
   selectedSRDate?: string | null;
   onSelectSRDate?: (date: string) => void;
   srZones?: SRZone[];
@@ -29,6 +32,7 @@ interface ChartProps {
   onToggleReveal?: () => void;
   theme?: 'light' | 'dark';
   isLogScale?: boolean;
+  showSaveImage?: boolean;
 }
 
 export interface TradingChartHandle {
@@ -48,6 +52,8 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
   resetTrigger,
   isSimulationMode,
   isSmartSRMode,
+  isScenarioMode,
+  scenarioResult,
   selectedSRDate,
   onSelectSRDate,
   srZones,
@@ -56,7 +62,8 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
   isRevealing,
   onToggleReveal,
   theme,
-  isLogScale
+  isLogScale,
+  showSaveImage = true
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -211,8 +218,9 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
     svg.selectAll('*').remove();
 
     // Scales
+    const xMax = isScenarioMode && scenarioResult ? data.length + scenarioResult.candles.length + 5 : data.length - 1;
     const x = d3.scaleLinear()
-      .domain([0, data.length - 1])
+      .domain([0, xMax])
       .range([margin.left, width - margin.right]);
 
     const y = isLogScale 
@@ -223,15 +231,15 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
 
     // Initial domains and zoom
     const pointsToShow = 100;
-    const initialK = Math.min(5000, Math.max(1, data.length / pointsToShow));
+    const totalPoints = isScenarioMode && scenarioResult ? data.length + scenarioResult.candles.length : data.length;
+    const initialK = Math.min(5000, Math.max(1, totalPoints / pointsToShow));
     
-    if (stateRef.current.xDomain[0] === 0) {
-      // Set initial zoom to show the last 100 points
+    if (stateRef.current.xDomain[0] === 0 || (isScenarioMode && stateRef.current.xDomain[1] < data.length)) {
+      // Set initial zoom to show the last part including ghost candles
       const k = initialK;
       const tx = (width - margin.right) * (1 - k);
       stateRef.current.lastTransform = d3.zoomIdentity.translate(tx, 0).scale(k);
       
-      // Reset Y domain for the visible range
       const currentX = stateRef.current.lastTransform.rescaleX(x);
       const [xStart, xEnd] = currentX.domain();
       stateRef.current.xDomain = [xStart, xEnd];
@@ -504,112 +512,192 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
           .text('VOLUME');
       }
 
-    // Smart S/R Zones and Masking
-    if (isSmartSRMode && selectedSRDate) {
-      const selectedIdx = data.findIndex(d => d.date === selectedSRDate);
-      if (selectedIdx !== -1) {
-        const startX = xScale(selectedIdx);
-        const revealX = xScale(selectedIdx + revealIndex);
-        const endX = xScale(data.length - 1);
+      // Smart S/R Zones and Masking
+      if (isSmartSRMode && selectedSRDate) {
+        const selectedIdx = data.findIndex(d => d.date === selectedSRDate);
+        if (selectedIdx !== -1) {
+          const startX = xScale(selectedIdx);
+          const revealX = xScale(selectedIdx + revealIndex);
+          const endX = xScale(data.length - 1);
 
-        // Start Point Indicator (Arrow)
-        chartContent.append('path')
-          .attr('d', d3.symbol().type(d3.symbolTriangle).size(100)())
-          .attr('transform', `translate(${startX}, ${margin.top + 20}) rotate(180)`)
-          .attr('fill', '#10b981');
-        
-        chartContent.append('text')
-          .attr('x', startX)
-          .attr('y', margin.top + 10)
-          .attr('text-anchor', 'middle')
-          .attr('class', 'text-[9px] font-bold fill-emerald-500')
-          .text('START');
-
-        // S/R Zones
-        if (srZones) {
-          srZones.forEach(zone => {
-            const py = yScale(zone.price);
-            
-            // Background Zone
-            chartContent.append('rect')
-              .attr('x', startX)
-              .attr('y', py - 5)
-              .attr('width', endX - startX)
-              .attr('height', 10)
-              .attr('fill', zone.color)
-              .attr('opacity', 0.3);
-
-            // Main Line
-            chartContent.append('line')
-              .attr('x1', startX)
-              .attr('x2', endX)
-              .attr('y1', py)
-              .attr('y2', py)
-              .attr('stroke', zone.color.replace('0.2', '0.8').replace('0.3', '0.8'))
-              .attr('stroke-width', 1.5)
-              .attr('stroke-dasharray', zone.name.includes('Golden') ? 'none' : '4,2');
-
-            // Label
-            chartContent.append('text')
-              .attr('x', startX + 5)
-              .attr('y', py - 8)
-              .attr('fill', isDark ? '#fff' : '#000')
-              .attr('font-size', '9px')
-              .attr('font-weight', 'bold')
-              .attr('class', 'select-none pointer-events-none')
-              .text(`${zone.name}: ${zone.price.toFixed(2)}`);
-          });
-        }
-
-        // Masking (Blur/Opacity) - More dramatic for backtest
-        if (revealX < endX) {
-          chartContent.append('rect')
-            .attr('x', revealX)
-            .attr('y', margin.top)
-            .attr('width', endX - revealX)
-            .attr('height', mainAreaHeight)
-            .attr('fill', isDark ? '#09090b' : '#fff')
-            .attr('opacity', 0.85)
-            .attr('style', 'backdrop-filter: blur(12px)');
+          // Start Point Indicator (Arrow)
+          chartContent.append('path')
+            .attr('d', d3.symbol().type(d3.symbolTriangle).size(100)())
+            .attr('transform', `translate(${startX}, ${margin.top + 20}) rotate(180)`)
+            .attr('fill', '#10b981');
           
-          // Scanning Line Effect
-          chartContent.append('line')
-            .attr('x1', revealX)
-            .attr('x2', revealX)
-            .attr('y1', margin.top)
-            .attr('y2', height - margin.bottom)
-            .attr('stroke', '#10b981')
-            .attr('stroke-width', 2)
-            .attr('class', 'animate-pulse');
-        }
+          chartContent.append('text')
+            .attr('x', startX)
+            .attr('y', margin.top + 10)
+            .attr('text-anchor', 'middle')
+            .attr('class', 'text-[9px] font-bold fill-emerald-500')
+            .text('START');
 
-        // Hit Notification
-        const currentRevealData = data[selectedIdx + revealIndex];
-        if (currentRevealData && srZones) {
-          srZones.forEach(zone => {
-            if (currentRevealData.low <= zone.price && currentRevealData.high >= zone.price) {
-              const hitColor = zone.type === 'support' ? '#10b981' : '#f43f5e';
+          // S/R Zones
+          if (srZones) {
+            srZones.forEach(zone => {
+              const py = yScale(zone.price);
               
-              chartContent.append('circle')
-                .attr('cx', revealX)
-                .attr('cy', yScale(zone.price))
-                .attr('r', 15)
-                .attr('fill', 'none')
-                .attr('stroke', hitColor)
-                .attr('stroke-width', 2)
-                .attr('class', 'animate-ping');
+              // Background Zone
+              chartContent.append('rect')
+                .attr('x', startX)
+                .attr('y', py - 5)
+                .attr('width', endX - startX)
+                .attr('height', 10)
+                .attr('fill', zone.color)
+                .attr('opacity', 0.3);
 
+              // Main Line
+              chartContent.append('line')
+                .attr('x1', startX)
+                .attr('x2', endX)
+                .attr('y1', py)
+                .attr('y2', py)
+                .attr('stroke', zone.color.replace('0.2', '0.8').replace('0.3', '0.8'))
+                .attr('stroke-width', 1.5)
+                .attr('stroke-dasharray', zone.name.includes('Golden') ? 'none' : '4,2');
+
+              // Label
               chartContent.append('text')
-                .attr('x', revealX)
-                .attr('y', yScale(zone.price) - 20)
-                .attr('text-anchor', 'middle')
-                .attr('class', `text-[12px] font-black ${zone.type === 'support' ? 'fill-emerald-500' : 'fill-rose-500'}`)
-                .text('HIT!');
-            }
-          });
+                .attr('x', startX + 5)
+                .attr('y', py - 8)
+                .attr('fill', isDark ? '#fff' : '#000')
+                .attr('font-size', '9px')
+                .attr('font-weight', 'bold')
+                .attr('class', 'select-none pointer-events-none')
+                .text(`${zone.name}: ${zone.price.toFixed(2)}`);
+            });
+          }
+
+          // Masking (Blur/Opacity) - More dramatic for backtest
+          if (revealX < endX) {
+            chartContent.append('rect')
+              .attr('x', revealX)
+              .attr('y', margin.top)
+              .attr('width', endX - revealX)
+              .attr('height', mainAreaHeight)
+              .attr('fill', isDark ? '#09090b' : '#fff')
+              .attr('opacity', 0.85)
+              .attr('style', 'backdrop-filter: blur(12px)');
+            
+            // Scanning Line Effect
+            chartContent.append('line')
+              .attr('x1', revealX)
+              .attr('x2', revealX)
+              .attr('y1', margin.top)
+              .attr('y2', height - margin.bottom)
+              .attr('stroke', '#10b981')
+              .attr('stroke-width', 2)
+              .attr('class', 'animate-pulse');
+          }
+
+          // Hit Notification
+          const currentRevealData = data[selectedIdx + revealIndex];
+          if (currentRevealData && srZones) {
+            srZones.forEach(zone => {
+              if (currentRevealData.low <= zone.price && currentRevealData.high >= zone.price) {
+                const hitColor = zone.type === 'support' ? '#10b981' : '#f43f5e';
+                
+                chartContent.append('circle')
+                  .attr('cx', revealX)
+                  .attr('cy', yScale(zone.price))
+                  .attr('r', 15)
+                  .attr('fill', 'none')
+                  .attr('stroke', hitColor)
+                  .attr('stroke-width', 2)
+                  .attr('class', 'animate-ping');
+
+                chartContent.append('text')
+                  .attr('x', revealX)
+                  .attr('y', yScale(zone.price) - 20)
+                  .attr('text-anchor', 'middle')
+                  .attr('class', `text-[12px] font-black ${zone.type === 'support' ? 'fill-emerald-500' : 'fill-rose-500'}`)
+                  .text('HIT!');
+              }
+            });
+          }
         }
       }
-    }
+
+      // Ghost Candles Rendering
+      if (isScenarioMode && scenarioResult && chartType === 'candlestick') {
+        const ghostData = scenarioResult.candles;
+        const candleWidth = Math.max(1, (width / (xEnd - xStart)) * 0.7);
+        
+        ghostData.forEach((d, i) => {
+          const idx = data.length + i;
+          const color = d.close >= d.open ? '#10b981' : '#ef4444';
+          
+          const gCandle = chartContent.append('g')
+            .attr('class', 'ghost-candle-group')
+            .style('animation', 'pulse-ghost 2s infinite ease-in-out');
+
+          // Wick
+          gCandle.append('line')
+            .attr('x1', xScale(idx))
+            .attr('x2', xScale(idx))
+            .attr('y1', yScale(d.low))
+            .attr('y2', yScale(d.high))
+            .attr('stroke', color)
+            .attr('stroke-width', 1.5);
+
+          // Body
+          gCandle.append('rect')
+            .attr('x', xScale(idx) - candleWidth / 2)
+            .attr('y', yScale(Math.max(d.open, d.close)))
+            .attr('width', candleWidth)
+            .attr('height', Math.abs(yScale(d.open) - yScale(d.close)) || 1)
+            .attr('fill', color)
+            .attr('stroke', color)
+            .attr('stroke-width', 1);
+            
+          // Pattern Name Label
+          if (d.patternName) {
+            gCandle.append('text')
+              .attr('x', xScale(idx))
+              .attr('y', yScale(d.high) - 25)
+              .attr('text-anchor', 'middle')
+              .attr('class', 'text-[9px] font-black fill-indigo-500 uppercase tracking-tighter')
+              .text(d.patternName);
+          }
+
+          // Price Labels
+          gCandle.append('text')
+            .attr('x', xScale(idx))
+            .attr('y', yScale(d.close) + (d.close > d.open ? -12 : 22))
+            .attr('text-anchor', 'middle')
+            .attr('class', 'text-[9px] font-mono font-black fill-zinc-500')
+            .text(d.close.toFixed(2));
+
+          if (i === 0) {
+            gCandle.append('text')
+              .attr('x', xScale(idx))
+              .attr('y', yScale(d.high) - 10)
+              .attr('text-anchor', 'middle')
+              .attr('class', 'text-[8px] font-black fill-indigo-400 uppercase')
+              .text('แท่งถัดไป');
+          }
+        });
+
+        // Invalidation Line
+        const invY = yScale(scenarioResult.invalidation);
+        chartContent.append('line')
+          .attr('x1', xScale(data.length - 1))
+          .attr('x2', xScale(data.length + ghostData.length + 2))
+          .attr('y1', invY)
+          .attr('y2', invY)
+          .attr('stroke', '#ef4444')
+          .attr('stroke-width', 2)
+          .attr('stroke-dasharray', '4,4');
+
+        chartContent.append('text')
+          .attr('x', xScale(data.length + ghostData.length + 2))
+          .attr('y', invY)
+          .attr('dx', 5)
+          .attr('dominant-baseline', 'central')
+          .attr('class', 'text-[9px] font-black fill-rose-500 uppercase tracking-widest')
+          .text(`จุดตัดขาดทุน: ${scenarioResult.invalidation.toFixed(2)}`);
+      }
     };
 
     const zoom = d3.zoom<SVGSVGElement, unknown>()
@@ -624,9 +712,24 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
         if (stateRef.current.isYAuto) {
           const [xStart, xEnd] = newX.domain();
           const visible = data.filter((_, i) => i >= xStart && i <= xEnd);
-          if (visible.length > 0) {
-            let min = d3.min(visible, (d: StockData) => d.low) ?? 0;
-            let max = d3.max(visible, (d: StockData) => d.high) ?? 0;
+          const visibleGhosts = isScenarioMode && scenarioResult 
+            ? scenarioResult.candles.filter((_, i) => (data.length + i) >= xStart && (data.length + i) <= xEnd)
+            : [];
+
+          if (visible.length > 0 || visibleGhosts.length > 0) {
+            let minH = d3.min(visible, (d: StockData) => d.low) ?? Infinity;
+            let maxH = d3.max(visible, (d: StockData) => d.high) ?? -Infinity;
+            let minG = d3.min(visibleGhosts, d => d.low) ?? Infinity;
+            let maxG = d3.max(visibleGhosts, d => d.high) ?? -Infinity;
+            
+            let min = Math.min(minH, minG);
+            let max = Math.max(maxH, maxG);
+
+            // Include invalidation point if scenario mode is active
+            if (isScenarioMode && scenarioResult) {
+              min = Math.min(min, scenarioResult.invalidation);
+              max = Math.max(max, scenarioResult.invalidation);
+            }
             
             // Include S/R zones in Y domain if they exist
             if (isSmartSRMode && srZones && srZones.length > 0) {
@@ -656,6 +759,15 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
       });
 
     svg.call(zoom);
+    
+    // Initial draw
+    const t = stateRef.current.lastTransform;
+    const initialX = t.rescaleX(x);
+    const initialY = stateRef.current.isYAuto ? y.domain(stateRef.current.yDomain) : t.rescaleY(y);
+    
+    gx.call(xAxis.scale(initialX));
+    gy.call(yAxis.scale(initialY));
+    draw(initialX, initialY);
     
     // Double click to reset Y auto
     svg.on('dblclick', () => {
@@ -689,12 +801,6 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
       }
     });
     svg.call(zoom.transform, stateRef.current.lastTransform);
-
-    // Initial draw is handled by zoom.transform call above
-    // but we ensure axis is correct
-    const initialX = stateRef.current.lastTransform.rescaleX(x);
-    gx.call(xAxis.scale(initialX));
-    draw(initialX, y);
 
     // Smart S/R Selection Mode Guide
     const srGuide = svg.append('g').attr('class', 'sr-guide').style('display', 'none').style('pointer-events', 'none');
@@ -801,11 +907,27 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
       }
     });
 
-  }, [data, showVWAP, showOBV, showVolume, showEMAX, chartType, resetTrigger, theme, isSmartSRMode, selectedSRDate, srZones, revealIndex, isLogScale]);
+  }, [
+    data,
+    showVWAP,
+    showOBV,
+    showVolume,
+    showEMAX,
+    chartType,
+    resetTrigger,
+    theme,
+    isSmartSRMode,
+    isScenarioMode,
+    scenarioResult,
+    selectedSRDate,
+    srZones,
+    revealIndex,
+    isLogScale
+  ]);
 
   return (
     <div ref={containerRef} className="w-full h-full relative trading-chart-container">
-      {!isSmartSRMode && (
+      {!isSmartSRMode && showSaveImage && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 pointer-events-none">
           <button 
             onClick={saveAsImage}
@@ -814,12 +936,12 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
               isDark ? "bg-zinc-800/80 backdrop-blur-md border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-700" : "bg-white/80 backdrop-blur-md border-zinc-200 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-50"
             )}
           >
-            SAVE IMAGE
+            บันทึกภาพ (SAVE IMAGE)
           </button>
           {isSimulationMode && (
             <div className="bg-rose-600 text-white px-6 py-2 rounded-full text-[11px] font-black uppercase tracking-[0.25em] shadow-2xl shadow-rose-900/50 flex items-center gap-3 animate-pulse border-2 border-white/20">
               <div className="w-2.5 h-2.5 rounded-full bg-white animate-ping" />
-              Simulation Active: Predicting Death Cross
+              กำลังจำลอง: ทำนายจุดตัด Death Cross
             </div>
           )}
         </div>
@@ -828,12 +950,12 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
       {isSmartSRMode && (
         <div className="absolute top-2 right-2 z-30 flex flex-col items-end gap-1 pointer-events-none">
           {srGuidance ? (
-            <div className="bg-zinc-900/90 text-white p-4 rounded-xl text-[10px] shadow-2xl border border-zinc-700 backdrop-blur-md w-64 pointer-events-auto">
-              <div className="flex items-center gap-2 mb-2 text-rose-400 font-bold">
-                <HelpCircle className="w-4 h-4" />
-                <span>คำแนะนำระบบ</span>
+            <div className="bg-zinc-900/95 text-white p-6 rounded-2xl text-sm shadow-2xl border border-zinc-700 backdrop-blur-xl w-80 pointer-events-auto animate-in fade-in slide-in-from-top-2">
+              <div className="flex items-center gap-3 mb-4 text-emerald-400 font-bold">
+                <TrendingUp className="w-5 h-5" />
+                <span className="text-base tracking-tight">คำแนะนำจากระบบ</span>
               </div>
-              <div className="whitespace-pre-line leading-relaxed opacity-90">
+              <div className="whitespace-pre-line leading-relaxed opacity-90 font-medium">
                 {srGuidance}
               </div>
             </div>
@@ -845,7 +967,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
               )}>
                 <div className="flex items-center gap-1.5">
                   <TrendingUp className="w-2.5 h-2.5" />
-                  <span>{srZones?.[0]?.type === 'support' ? 'Support' : 'Resistance'}: {selectedSRDate ? 'Backtest' : 'Select Start'}</span>
+                  <span>{srZones?.[0]?.type === 'support' ? 'แนวรับ (Support)' : 'แนวต้าน (Resistance)'}: {selectedSRDate ? 'ทดสอบย้อนหลัง' : 'เลือกจุดเริ่มต้น'}</span>
                 </div>
                 {selectedSRDate && (
                   <div className="px-1.5 py-0 bg-white/20 rounded text-[8px] font-medium">
@@ -868,7 +990,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
                   )}
                 >
                   {isRevealing ? <Pause className="w-2.5 h-2.5" /> : <Play className="w-2.5 h-2.5" />}
-                  {isRevealing ? 'Pause' : 'Start'}
+                  {isRevealing ? 'หยุด (Pause)' : 'เริ่ม (Start)'}
                 </button>
               )}
             </>
@@ -879,6 +1001,75 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
               Y: Manual (Double Click)
             </div>
           )}
+        </div>
+      )}
+
+      {isScenarioMode && scenarioResult && (
+        <div className="absolute top-6 right-6 z-40 w-80 pointer-events-auto">
+          <div className={cn(
+            "p-6 rounded-3xl border shadow-2xl backdrop-blur-2xl transition-all animate-in fade-in slide-in-from-right-6",
+            isDark ? "bg-zinc-900/95 border-zinc-800 text-zinc-100" : "bg-white/95 border-zinc-200 text-zinc-900"
+          )}>
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className={cn(
+                  "p-2 rounded-xl",
+                  scenarioResult.type === 'BULLISH' ? "bg-emerald-500 shadow-lg shadow-emerald-500/20" : "bg-rose-500 shadow-lg shadow-rose-500/20"
+                )}>
+                  <Ghost className="w-5 h-5 text-white" />
+                </div>
+                <div className="flex flex-col">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest opacity-50">จำลองสถานการณ์ (Future Test)</h4>
+                  <p className="text-lg font-black text-zinc-100 leading-tight tracking-tight">{scenarioResult.patternName}</p>
+                </div>
+              </div>
+              <div className={cn(
+                "px-3 py-1 rounded-lg text-xs font-black",
+                scenarioResult.confidence > 75 ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"
+              )}>
+                โอกาส {scenarioResult.confidence}%
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                  <Target className="w-4 h-4" />
+                  <span>สถานะปัจจุบัน</span>
+                </div>
+                <p className="text-sm font-bold leading-relaxed">{scenarioResult.setup}</p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                  <Play className="w-4 h-4" />
+                  <span>เงื่อนไขการเข้าซื้อ (Trigger)</span>
+                </div>
+                <p className="text-sm font-medium opacity-80 leading-relaxed italic">{scenarioResult.trigger}</p>
+              </div>
+
+              <div className="pt-4 border-t border-zinc-800/50">
+                <div className="flex items-center gap-2 text-[10px] font-black text-rose-500 uppercase tracking-widest mb-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  <span>จุดตัดขาดทุน (Stop Loss)</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-2xl font-black font-mono tracking-tighter text-rose-500">
+                    {scenarioResult.invalidation.toFixed(2)}
+                  </span>
+                  <div className="text-right">
+                    <p className="text-[10px] font-bold text-zinc-500 uppercase">ความเสี่ยง</p>
+                    <p className="text-xs font-black text-rose-400">สูง (HIGH)</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="mt-6 pt-4 border-t border-zinc-800/30">
+              <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-[0.15em] leading-relaxed">
+                * การจำลองทางสถิติเพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำการลงทุน
+              </p>
+            </div>
+          </div>
         </div>
       )}
 

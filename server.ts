@@ -118,10 +118,13 @@ async function startServer() {
   // Notes API
   app.get("/api/notes/:symbol", (req, res) => {
     const { symbol } = req.params;
+    console.log(`Fetching notes for symbol: ${symbol}`);
     try {
       const notes = db.prepare('SELECT * FROM stock_notes WHERE symbol = ? ORDER BY date DESC').all(symbol);
+      console.log(`Notes found: ${notes.length}`);
       res.json(notes);
     } catch (error) {
+      console.error('Error fetching notes:', error);
       res.status(500).json({ error: 'Failed to fetch notes' });
     }
   });
@@ -682,8 +685,27 @@ async function startServer() {
   });
 
   app.get("/api/stock/:symbol", async (req, res) => {
-    const { symbol } = req.params;
+    let { symbol } = req.params;
     const { interval = '1d', from = '2020-01-01' } = req.query;
+
+    // Symbol Mapping for Indices and Commodities
+    const symbolMap: { [key: string]: string } = {
+      'SET': '^SET.BK',
+      'DJI': '^DJI',
+      'SPX': '^GSPC',
+      'IXIC': '^IXIC',
+      'FTSE': '^FTSE',
+      'N225': '^N225',
+      'HSI': '^HSI',
+      'GOLD': 'GC=F',
+      'OIL': 'CL=F',
+      'USDTHB': 'USDTHB=X'
+    };
+
+    if (symbolMap[symbol.toUpperCase()]) {
+      symbol = symbolMap[symbol.toUpperCase()];
+    }
+
     const cacheKey = `${symbol}_${interval}_${from}`;
 
     try {

@@ -145,7 +145,7 @@ export const ReversalBox: React.FC<ReversalBoxProps> = ({ symbol, analysis, curr
                 {formatCurrency(analysis.stopLoss, currency)}
               </p>
               <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">
-                Based on recent local low (-1%)
+                Based on ATR & Swing Low
               </p>
             </div>
           </div>

@@ -108,6 +108,70 @@ export function calculateEMA(data: StockData[], period: number, key: 'ema50' | '
   });
 }
 
+export function calculateRSI(data: StockData[], period: number = 14): StockData[] {
+  if (data.length < period) return data;
+
+  let gains = 0;
+  let losses = 0;
+
+  for (let i = 1; i <= period; i++) {
+    const change = data[i].close - data[i - 1].close;
+    if (change > 0) gains += change;
+    else losses -= change;
+  }
+
+  let avgGain = gains / period;
+  let avgLoss = losses / period;
+
+  const result = [...data];
+  for (let i = 0; i < data.length; i++) {
+    if (i < period) {
+      result[i] = { ...result[i], rsi: 50 };
+      continue;
+    }
+
+    if (i > period) {
+      const change = data[i].close - data[i - 1].close;
+      const gain = change > 0 ? change : 0;
+      const loss = change < 0 ? -change : 0;
+      avgGain = (avgGain * (period - 1) + gain) / period;
+      avgLoss = (avgLoss * (period - 1) + loss) / period;
+    }
+
+    const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+    const rsi = 100 - (100 / (1 + rs));
+    result[i] = { ...result[i], rsi };
+  }
+
+  return result;
+}
+
+export function calculateMACD(data: StockData[]): StockData[] {
+  const ema12 = calculateEMA(data, 12, 'ema12' as any);
+  const ema26 = calculateEMA(ema12, 26, 'ema26' as any);
+  
+  const macdLine = ema26.map(d => ({
+    ...d,
+    macd: (d as any).ema12 - (d as any).ema26
+  }));
+
+  // Signal Line (EMA 9 of MACD)
+  const period = 9;
+  const multiplier = 2 / (period + 1);
+  let prevSignal = (macdLine[0] as any).macd || 0;
+
+  return macdLine.map((point, i) => {
+    const macd = (point as any).macd || 0;
+    const signal = (macd - prevSignal) * multiplier + prevSignal;
+    prevSignal = signal;
+    return {
+      ...point,
+      macdSignal: signal,
+      macdHistogram: macd - signal
+    };
+  });
+}
+
 export function calculateVWAP(data: StockData[]): StockData[] {
   let cumulativeTPV = 0;
   let cumulativeVolume = 0;

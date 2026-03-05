@@ -21,6 +21,8 @@ interface ChartControlsProps {
   setIsSimulationMode: (val: boolean) => void;
   isSmartSRMode: boolean;
   setIsSmartSRMode: (val: boolean) => void;
+  isScenarioMode: boolean;
+  onToggleScenario: () => void;
   onReset: () => void;
   onRefresh: () => void;
   theme?: 'light' | 'dark';
@@ -51,6 +53,8 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
   setIsSimulationMode,
   isSmartSRMode,
   setIsSmartSRMode,
+  isScenarioMode,
+  onToggleScenario,
   onReset,
   onRefresh,
   theme
@@ -82,9 +86,9 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
           ))}
         </div>
 
-        <div className={cn("flex p-1.5 rounded-lg border", isDark ? "bg-zinc-800 border-zinc-700" : "bg-zinc-100 border-zinc-200", isSmartSRMode && "opacity-50 pointer-events-none")}>
+        <div className={cn("flex p-1.5 rounded-lg border", isDark ? "bg-zinc-800 border-zinc-700" : "bg-zinc-100 border-zinc-200", (isSmartSRMode || isScenarioMode) && "opacity-50 pointer-events-none")}>
           <button
-            disabled={isSmartSRMode}
+            disabled={isSmartSRMode || isScenarioMode}
             onClick={() => setChartType('line')}
             title="Line Chart"
             className={cn(
@@ -97,6 +101,7 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
             Line
           </button>
           <button
+            disabled={isSmartSRMode || isScenarioMode}
             onClick={() => setChartType('candlestick')}
             title="Candlestick Chart"
             className={cn(
@@ -217,29 +222,20 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
           <TrendingUp className={cn("w-4 h-4", isSmartSRMode && "animate-pulse")} />
           S/R
         </button>
+        <button
+          onClick={onToggleScenario}
+          title="Candlestick Scenario Simulator"
+          className={cn(
+            "flex items-center gap-2 px-4 py-2 rounded-md border font-bold text-[12px] uppercase tracking-tight transition-all",
+            isScenarioMode 
+              ? "bg-indigo-600 border-indigo-700 text-white shadow-lg shadow-indigo-900/20" 
+              : (isDark ? "bg-zinc-800 border-zinc-700 text-zinc-500" : "bg-white border-zinc-200 text-zinc-400")
+          )}
+        >
+          <BarChart3 className={cn("w-4 h-4", isScenarioMode && "animate-pulse")} />
+          GHOST
+        </button>
 
-        <div className="relative group/info">
-          <button
-            className={cn(
-              "p-1.5 rounded-md border transition-all",
-              isDark ? "bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-zinc-100" : "bg-white border-zinc-200 text-zinc-400 hover:text-zinc-900 shadow-sm"
-            )}
-          >
-            <HelpCircle className="w-4 h-4" />
-          </button>
-          <div className={cn(
-            "absolute bottom-full right-0 mb-2 w-64 p-4 rounded-xl border shadow-2xl opacity-0 invisible group-hover/info:opacity-100 group-hover/info:visible transition-all z-50",
-            isDark ? "bg-zinc-900 border-zinc-800 text-zinc-300" : "bg-white border-zinc-200 text-zinc-600"
-          )}>
-            <h4 className={cn("text-[11px] font-bold uppercase tracking-widest mb-2", isDark ? "text-zinc-100" : "text-zinc-900")}>Simulation Methodology</h4>
-            <div className="space-y-2 text-[10px] leading-relaxed">
-              <p><span className="font-bold text-rose-500">Weighted Volatility:</span> 70% weight on recent 30 days (Recency) + 30% weight on 90 days (Character).</p>
-              <p><span className="font-bold text-rose-500">Price Projection:</span> 20-day forecast using Box-Muller transform for statistical randomness.</p>
-              <p><span className="font-bold text-rose-500">Death Cross Logic:</span> Pure mathematical simulation of EMA 50 crossing below EMA 135.</p>
-              <p className="italic opacity-70 border-t pt-2 mt-2">No AI estimation used. All calculations are hard-coded statistical functions.</p>
-            </div>
-          </div>
-        </div>
         <button
           onClick={onRefresh}
           className={cn(

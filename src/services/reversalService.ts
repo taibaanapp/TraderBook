@@ -21,6 +21,15 @@ export interface ReversalAnalysis {
   patterns: {
     isBullishEngulfing: boolean;
     isHammer: boolean;
+    isMorningStar: boolean;
+    isPiercingLine: boolean;
+    isBullishHarami: boolean;
+    isEveningStar: boolean;
+    isDarkCloudCover: boolean;
+    isThreeWhiteSoldiers: boolean;
+    isThreeBlackCrows: boolean;
+    isDragonflyDoji: boolean;
+    isGravestoneDoji: boolean;
     isDivergence: boolean;
     isBreakout: boolean;
     isSlopeUp: boolean;
@@ -65,6 +74,19 @@ export function calculateRSI(data: number[], period: number = 14): number[] {
   return rsi;
 }
 
+export function calculateATR(highs: number[], lows: number[], closes: number[], period: number = 14): number {
+  const trs: number[] = [];
+  for (let i = 1; i < highs.length; i++) {
+    const tr = Math.max(
+      highs[i] - lows[i],
+      Math.abs(highs[i] - closes[i - 1]),
+      Math.abs(lows[i] - closes[i - 1])
+    );
+    trs.push(tr);
+  }
+  return trs.slice(-period).reduce((a, b) => a + b, 0) / period;
+}
+
 export function analyzeReversal(data: StockData[]): ReversalAnalysis {
   if (data.length < 30) {
     return {
@@ -73,7 +95,22 @@ export function analyzeReversal(data: StockData[]): ReversalAnalysis {
       conditions: [],
       stopLoss: 0,
       indicators: { ema20: 0, ema50: 0, rsi: 0, volMA15: 0 },
-      patterns: { isBullishEngulfing: false, isHammer: false, isDivergence: false, isBreakout: false, isSlopeUp: false }
+      patterns: { 
+        isBullishEngulfing: false, 
+        isHammer: false, 
+        isMorningStar: false,
+        isPiercingLine: false,
+        isBullishHarami: false,
+        isEveningStar: false,
+        isDarkCloudCover: false,
+        isThreeWhiteSoldiers: false,
+        isThreeBlackCrows: false,
+        isDragonflyDoji: false,
+        isGravestoneDoji: false,
+        isDivergence: false, 
+        isBreakout: false, 
+        isSlopeUp: false 
+      }
     };
   }
 
@@ -85,6 +122,7 @@ export function analyzeReversal(data: StockData[]): ReversalAnalysis {
   const ema20 = calculateEMA(closes, 20);
   const ema50 = calculateEMA(closes, 50);
   const rsi = calculateRSI(closes, 14);
+  const atr = calculateATR(highs, lows, closes, 14);
 
   const lastIdx = data.length - 1;
   const current = data[lastIdx] || { close: 0, open: 0, high: 0, low: 0, volume: 0 };
@@ -164,22 +202,93 @@ export function analyzeReversal(data: StockData[]): ReversalAnalysis {
     score: 15
   });
 
-  // 5. (10 คะแนน) เกิดแท่งเทียน Bullish Engulfing หรือ Hammer ที่บริเวณแนวรับ
+  // 5. (10 คะแนน) เกิดแท่งเทียนกลับตัว (Bullish Engulfing, Hammer, Morning Star, etc.)
   const isBullishEngulfing = current.close > prev.open && current.open < prev.close && prev.close < prev.open;
+  
   const bodySize = Math.abs(current.close - current.open);
   const lowerShadow = Math.min(current.open, current.close) - current.low;
   const upperShadow = current.high - Math.max(current.open, current.close);
   const isHammer = lowerShadow > bodySize * 2 && upperShadow < bodySize;
 
-  if (isBullishEngulfing || isHammer) {
+  const prev2 = data[lastIdx - 2] || { close: 0, open: 0, high: 0, low: 0, volume: 0 };
+  const isMorningStar = prev2.close < prev2.open && 
+                        Math.abs(prev.close - prev.open) < (prev2.open - prev2.close) * 0.3 &&
+                        current.close > current.open &&
+                        current.close > (prev2.open + prev2.close) / 2;
+
+  const isPiercingLine = prev.close < prev.open &&
+                         current.open < prev.low &&
+                         current.close > (prev.open + prev.close) / 2 &&
+                         current.close < prev.open;
+
+  const isBullishHarami = prev.close < prev.open &&
+                          current.open > prev.close &&
+                          current.close < prev.open &&
+                          Math.abs(current.close - current.open) < Math.abs(prev.close - prev.open) * 0.5;
+
+  const isEveningStar = prev2.close > prev2.open &&
+                        Math.abs(prev.close - prev.open) < (prev2.close - prev2.open) * 0.3 &&
+                        current.close < current.open &&
+                        current.close < (prev2.open + prev2.close) / 2;
+
+  const isDarkCloudCover = prev.close > prev.open &&
+                           current.open > prev.high &&
+                           current.close < (prev.open + prev.close) / 2 &&
+                           current.close > prev.open;
+
+  const prev3 = data[lastIdx - 3] || { close: 0, open: 0, high: 0, low: 0, volume: 0 };
+  const isThreeWhiteSoldiers = current.close > current.open &&
+                               prev.close > prev.open &&
+                               prev2.close > prev2.open &&
+                               current.close > prev.close &&
+                               prev.close > prev2.close;
+
+  const isThreeBlackCrows = current.close < current.open &&
+                             prev.close < prev.open &&
+                             prev2.close < prev2.open &&
+                             current.close < prev.close &&
+                             prev.close < prev2.close;
+
+  const isDragonflyDoji = Math.abs(current.close - current.open) < (current.high - current.low) * 0.1 &&
+                          (current.high - Math.max(current.close, current.open)) < (current.high - current.low) * 0.1 &&
+                          (Math.min(current.close, current.open) - current.low) > (current.high - current.low) * 0.7;
+
+  const isGravestoneDoji = Math.abs(current.close - current.open) < (current.high - current.low) * 0.1 &&
+                           (Math.min(current.close, current.open) - current.low) < (current.high - current.low) * 0.1 &&
+                           (current.high - Math.max(current.close, current.open)) > (current.high - current.low) * 0.7;
+
+  const hasPattern = isBullishEngulfing || isHammer || isMorningStar || isPiercingLine || isBullishHarami || isThreeWhiteSoldiers || isDragonflyDoji;
+  const hasBearishPattern = isEveningStar || isDarkCloudCover || isThreeBlackCrows || isGravestoneDoji;
+
+  if (hasPattern) {
     score += 10;
-    reasons.push(`เกิดแท่งเทียน ${isBullishEngulfing ? 'Bullish Engulfing' : 'Hammer'} (+10)`);
+    let patternName = "Candlestick Pattern";
+    if (isBullishEngulfing) patternName = "Bullish Engulfing";
+    else if (isHammer) patternName = "Hammer";
+    else if (isMorningStar) patternName = "Morning Star";
+    else if (isPiercingLine) patternName = "Piercing Line";
+    else if (isBullishHarami) patternName = "Bullish Harami";
+    else if (isThreeWhiteSoldiers) patternName = "Three White Soldiers";
+    else if (isDragonflyDoji) patternName = "Dragonfly Doji";
+    
+    reasons.push(`เกิดแท่งเทียน ${patternName} (+10)`);
   }
+
+  if (hasBearishPattern) {
+    score -= 10;
+    let patternName = "Bearish Pattern";
+    if (isEveningStar) patternName = "Evening Star";
+    else if (isDarkCloudCover) patternName = "Dark Cloud Cover";
+    else if (isThreeBlackCrows) patternName = "Three Black Crows";
+    else if (isGravestoneDoji) patternName = "Gravestone Doji";
+    reasons.push(`ระวัง: เกิดแท่งเทียน ${patternName} (-10)`);
+  }
+
   conditions.push({
     name: "Candlestick Pattern",
-    passed: isBullishEngulfing || isHammer,
-    reason: (isBullishEngulfing || isHammer) ? `พบรูปแบบ ${isBullishEngulfing ? 'Bullish Engulfing' : 'Hammer'}` : "ไม่พบรูปแบบแท่งเทียนกลับตัวที่ชัดเจน",
-    score: 10
+    passed: hasPattern || hasBearishPattern,
+    reason: hasPattern ? "พบรูปแบบแท่งเทียนกลับตัวขาขึ้น" : (hasBearishPattern ? "พบรูปแบบแท่งเทียนกลับตัวขาลง" : "ไม่พบรูปแบบแท่งเทียนที่ชัดเจน"),
+    score: hasPattern ? 10 : (hasBearishPattern ? -10 : 0)
   });
 
   // 6. (10 คะแนน) เส้น EMA 20 เริ่มหักหัวขึ้น (Slope Change)
@@ -195,8 +304,24 @@ export function analyzeReversal(data: StockData[]): ReversalAnalysis {
     score: 10
   });
 
-  // Stop Loss Calculation (Local Low of last 5 days)
-  const stopLoss = Math.min(...lows.slice(lastIdx - 5, lastIdx + 1)) * 0.99;
+  // --- Dynamic Stop Loss Calculation ---
+  // 1. Swing Low: Lowest of last 5 days
+  const swingLow = Math.min(...lows.slice(lastIdx - 5, lastIdx + 1));
+  
+  // 2. Volatility Stop: Current Price - 1.5 * ATR
+  const volatilityStop = current.close - (1.5 * atr);
+  
+  // 3. Max Risk Cap: 5% from current price
+  const maxRiskStop = current.close * 0.95;
+
+  // We choose the highest (tightest) of these to avoid "wide" stops, 
+  // but ensure it is at least below the current low.
+  let stopLoss = Math.max(swingLow * 0.995, volatilityStop, maxRiskStop);
+  
+  // Safety check: Stop loss must be below current low
+  if (stopLoss >= current.low) {
+    stopLoss = current.low * 0.99;
+  }
 
   return {
     score,
@@ -212,6 +337,15 @@ export function analyzeReversal(data: StockData[]): ReversalAnalysis {
     patterns: {
       isBullishEngulfing,
       isHammer,
+      isMorningStar,
+      isPiercingLine,
+      isBullishHarami,
+      isEveningStar,
+      isDarkCloudCover,
+      isThreeWhiteSoldiers,
+      isThreeBlackCrows,
+      isDragonflyDoji,
+      isGravestoneDoji,
       isDivergence,
       isBreakout,
       isSlopeUp

@@ -33,10 +33,12 @@ import { ReversalBox } from './components/ReversalBox';
 import { SettingsModal } from './components/SettingsModal';
 import { ReversalDashboard } from './components/ReversalDashboard';
 import { Logo } from './components/Logo';
-import { calculateCompositeMoneyFlow, calculateVWAP, calculateEMA } from './services/indicatorService';
+import { MarketTicker } from './components/MarketTicker';
+import { calculateCompositeMoneyFlow, calculateVWAP, calculateEMA, calculateRSI, calculateMACD } from './services/indicatorService';
 import { analyzeReversal } from './services/reversalService';
 import { simulateGoldenCross } from './services/simulationService';
 import { calculateSmartSR, SRZone } from './services/smartSRService';
+import { generateScenario, ScenarioResult } from './services/scenarioService';
 import { getStockData, saveStockData } from './services/storageService';
 import { getFlag, formatCurrency } from './utils/formatters';
 import { cn } from './utils/cn';
@@ -89,6 +91,11 @@ export default function App() {
   const [isSimulationExpanded, setIsSimulationExpanded] = useState(true);
   const [isFinancialsExpanded, setIsFinancialsExpanded] = useState(false);
   const [isAiInsightEnabled, setIsAiInsightEnabled] = useState(false);
+  const [showTicker, setShowTicker] = useState(true);
+  const [showStockProfile, setShowStockProfile] = useState(true);
+  const [showFinancials, setShowFinancials] = useState(true);
+  const [showGeminiNews, setShowGeminiNews] = useState(true);
+  const [showSaveImage, setShowSaveImage] = useState(true);
   
   // Modal states
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -97,6 +104,8 @@ export default function App() {
   // Smart S/R State
   const [isSmartSRMode, setIsSmartSRMode] = useState(false);
   const [isLogScale, setIsLogScale] = useState(false);
+  const [isScenarioMode, setIsScenarioMode] = useState(false);
+  const [scenarioResult, setScenarioResult] = useState<ScenarioResult | null>(null);
   const [selectedSRDate, setSelectedSRDate] = useState<string | null>(null);
   const [revealIndex, setRevealIndex] = useState(0);
   const [isRevealing, setIsRevealing] = useState(false);
@@ -158,6 +167,15 @@ export default function App() {
     };
     fetchCustomStocks();
   }, []);
+
+  useEffect(() => {
+    setIsScenarioMode(false);
+    setScenarioResult(null);
+    setIsSmartSRMode(false);
+    setSelectedSRDate(null);
+    setRevealIndex(0);
+    setIsRevealing(false);
+  }, [symbol]);
 
   const fetchStockProfile = async (targetSymbol: string, exchangeName?: string) => {
     if (!isAiInsightEnabled) return;
@@ -249,12 +267,57 @@ export default function App() {
     } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
       setTheme('dark');
     }
+
+    const savedTicker = localStorage.getItem('showTicker');
+    if (savedTicker !== null) {
+      setShowTicker(savedTicker === 'true');
+    }
+
+    const savedStockProfile = localStorage.getItem('showStockProfile');
+    if (savedStockProfile !== null) {
+      setShowStockProfile(savedStockProfile === 'true');
+    }
+
+    const savedFinancials = localStorage.getItem('showFinancials');
+    if (savedFinancials !== null) {
+      setShowFinancials(savedFinancials === 'true');
+    }
+
+    const savedGeminiNews = localStorage.getItem('showGeminiNews');
+    if (savedGeminiNews !== null) {
+      setShowGeminiNews(savedGeminiNews === 'true');
+    }
+
+    const savedSaveImage = localStorage.getItem('showSaveImage');
+    if (savedSaveImage !== null) {
+      setShowSaveImage(savedSaveImage === 'true');
+    }
   }, []);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
     localStorage.setItem('theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem('showTicker', String(showTicker));
+  }, [showTicker]);
+
+  useEffect(() => {
+    localStorage.setItem('showStockProfile', String(showStockProfile));
+  }, [showStockProfile]);
+
+  useEffect(() => {
+    localStorage.setItem('showFinancials', String(showFinancials));
+  }, [showFinancials]);
+
+  useEffect(() => {
+    localStorage.setItem('showGeminiNews', String(showGeminiNews));
+  }, [showGeminiNews]);
+
+  useEffect(() => {
+    localStorage.setItem('showSaveImage', String(showSaveImage));
+  }, [showSaveImage]);
 
   const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
 
@@ -425,8 +488,22 @@ export default function App() {
     data = calculateVWAP(data);
     data = calculateEMA(data, 50, 'ema50');
     data = calculateEMA(data, 135, 'ema135');
+    data = calculateRSI(data);
+    data = calculateMACD(data);
     return data;
   }, [stockData, isSimulationMode, simulationRate, interval]);
+
+  const handleScenarioToggle = () => {
+    const nextMode = !isScenarioMode;
+    setIsScenarioMode(nextMode);
+    if (nextMode) {
+      const result = generateScenario(processedData);
+      setScenarioResult(result);
+      setChartType('candlestick'); // Force candlestick for ghost candles
+    } else {
+      setScenarioResult(null);
+    }
+  };
 
   const fetchData = async (targetSymbol: string, targetInterval: string, forceRefresh = false) => {
     if (!forceRefresh) {
@@ -795,6 +872,16 @@ export default function App() {
         </div>
       </header>
 
+      {showTicker && (
+        <MarketTicker 
+          theme={theme} 
+          onSelect={(newSymbol) => {
+            setSymbol(newSymbol);
+            setSearchInput(newSymbol);
+          }} 
+        />
+      )}
+
       <main className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-10 py-8">
         {error ? (
           <div className={cn(
@@ -815,16 +902,18 @@ export default function App() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* Left Sidebar */}
             <div className="lg:col-span-2 space-y-6">
-              <StockProfile 
-                theme={theme} 
-                data={stockProfile} 
-                loading={profileLoading} 
-                symbol={symbol} 
-                isExpanded={isProfileExpanded}
-                onToggle={() => setIsProfileExpanded(!isProfileExpanded)}
-                isAiEnabled={isAiInsightEnabled}
-                onToggleAi={() => setIsAiInsightEnabled(!isAiInsightEnabled)}
-              />
+              {showStockProfile && (
+                <StockProfile 
+                  theme={theme} 
+                  data={stockProfile} 
+                  loading={profileLoading} 
+                  symbol={symbol} 
+                  isExpanded={isProfileExpanded}
+                  onToggle={() => setIsProfileExpanded(!isProfileExpanded)}
+                  isAiEnabled={isAiInsightEnabled}
+                  onToggleAi={() => setIsAiInsightEnabled(!isAiInsightEnabled)}
+                />
+              )}
               <StockNotebook 
                 symbol={symbol} 
                 currentPrice={latestPrice || 0} 
@@ -864,6 +953,8 @@ export default function App() {
                 setIsSimulationMode={setIsSimulationMode}
                 isSmartSRMode={isSmartSRMode}
                 setIsSmartSRMode={setIsSmartSRMode}
+                isScenarioMode={isScenarioMode}
+                onToggleScenario={handleScenarioToggle}
                 onReset={() => {
                   setResetTrigger(prev => prev + 1);
                   setIsSimulationMode(false);
@@ -909,6 +1000,8 @@ export default function App() {
                     isLogScale={isLogScale}
                     isSimulationMode={isSimulationMode}
                     isSmartSRMode={isSmartSRMode}
+                    isScenarioMode={isScenarioMode}
+                    scenarioResult={scenarioResult}
                     selectedSRDate={selectedSRDate}
                     onSelectSRDate={setSelectedSRDate}
                     srZones={srZones}
@@ -917,6 +1010,7 @@ export default function App() {
                     isRevealing={isRevealing}
                     onToggleReveal={() => setIsRevealing(!isRevealing)}
                     theme={theme}
+                    showSaveImage={showSaveImage}
                   />
 
                   {/* Context Menu */}
@@ -928,36 +1022,43 @@ export default function App() {
                       )}
                       style={{ left: contextMenu.x, top: contextMenu.y }}
                     >
-                      <button
-                        onClick={() => {
-                          handleGeminiAnalysis(contextMenu.data);
-                          setContextMenu(null);
-                        }}
-                        className={cn(
-                          "w-full px-4 py-3 text-left transition-colors group",
-                          theme === 'dark' ? "hover:bg-zinc-800" : "hover:bg-zinc-100"
-                        )}
-                      >
-                        <div className="flex items-center gap-3 mb-1">
-                          <Brain className="w-4 h-4 text-rose-500" />
-                          <span className={cn("text-xs font-bold uppercase tracking-widest", theme === 'dark' ? "text-zinc-300" : "text-zinc-600")}>
-                            หาข่าวด้วย Gemini
-                          </span>
-                        </div>
-                        {geminiUsage && (
-                          <div className="flex items-center justify-between pl-7">
-                            <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">โควต้าวันนี้</span>
-                            <span className={cn(
-                              "text-[9px] font-black px-1.5 py-0.5 rounded",
-                              geminiUsage.count >= geminiUsage.limit 
-                                ? "bg-rose-500/10 text-rose-500" 
-                                : "bg-emerald-500/10 text-emerald-500"
-                            )}>
-                              เหลือ {geminiUsage.limit - geminiUsage.count} / {geminiUsage.limit}
+                      {showGeminiNews && (
+                        <button
+                          onClick={() => {
+                            handleGeminiAnalysis(contextMenu.data);
+                            setContextMenu(null);
+                          }}
+                          className={cn(
+                            "w-full px-4 py-3 text-left transition-colors group",
+                            theme === 'dark' ? "hover:bg-zinc-800" : "hover:bg-zinc-100"
+                          )}
+                        >
+                          <div className="flex items-center gap-3 mb-1">
+                            <Brain className="w-4 h-4 text-rose-500" />
+                            <span className={cn("text-xs font-bold uppercase tracking-widest", theme === 'dark' ? "text-zinc-300" : "text-zinc-600")}>
+                              หาข่าวด้วย Gemini
                             </span>
                           </div>
-                        )}
-                      </button>
+                          {geminiUsage && (
+                            <div className="flex items-center justify-between pl-7">
+                              <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">โควต้าวันนี้</span>
+                              <span className={cn(
+                                "text-[9px] font-black px-1.5 py-0.5 rounded",
+                                geminiUsage.count >= geminiUsage.limit 
+                                  ? "bg-rose-500/10 text-rose-500" 
+                                  : "bg-emerald-500/10 text-emerald-500"
+                              )}>
+                                เหลือ {geminiUsage.limit - geminiUsage.count} / {geminiUsage.limit}
+                              </span>
+                            </div>
+                          )}
+                        </button>
+                      )}
+                      {!showGeminiNews && (
+                        <div className="px-4 py-3 text-xs text-zinc-500 font-bold uppercase tracking-widest text-center">
+                          Menu Disabled
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -981,12 +1082,14 @@ export default function App() {
                 theme={theme}
               />
 
-              <FinancialIndicators 
-                symbol={symbol} 
-                theme={theme} 
-                isExpanded={isFinancialsExpanded}
-                onToggle={() => setIsFinancialsExpanded(!isFinancialsExpanded)}
-              />
+              {showFinancials && (
+                <FinancialIndicators 
+                  symbol={symbol} 
+                  theme={theme} 
+                  isExpanded={isFinancialsExpanded}
+                  onToggle={() => setIsFinancialsExpanded(!isFinancialsExpanded)}
+                />
+              )}
             </div>
 
             {/* Right Sidebar */}
@@ -1383,6 +1486,16 @@ export default function App() {
         theme={theme}
         isAiInsightEnabled={isAiInsightEnabled}
         onToggleAiInsight={() => setIsAiInsightEnabled(!isAiInsightEnabled)}
+        showTicker={showTicker}
+        onToggleTicker={() => setShowTicker(!showTicker)}
+        showStockProfile={showStockProfile}
+        onToggleStockProfile={() => setShowStockProfile(!showStockProfile)}
+        showFinancials={showFinancials}
+        onToggleFinancials={() => setShowFinancials(!showFinancials)}
+        showGeminiNews={showGeminiNews}
+        onToggleGeminiNews={() => setShowGeminiNews(!showGeminiNews)}
+        showSaveImage={showSaveImage}
+        onToggleSaveImage={() => setShowSaveImage(!showSaveImage)}
       />
 
       <ReversalDashboard 
