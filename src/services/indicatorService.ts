@@ -92,7 +92,7 @@ export function calculateCompositeMoneyFlow(data: StockData[]): StockData[] {
   });
 }
 
-export function calculateEMA(data: StockData[], period: number, key: 'ema50' | 'ema135'): StockData[] {
+export function calculateEMA(data: StockData[], period: number, key: 'ema20' | 'ema50' | 'ema135'): StockData[] {
   if (!data || data.length === 0) return [];
   
   const multiplier = 2 / (period + 1);

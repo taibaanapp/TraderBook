@@ -15,6 +15,12 @@ interface ChartControlsProps {
   setShowVolume: (val: boolean) => void;
   showEMAX: boolean;
   setShowEMAX: (val: boolean) => void;
+  showEMA20: boolean;
+  setShowEMA20: (val: boolean) => void;
+  showEMA50: boolean;
+  setShowEMA50: (val: boolean) => void;
+  isInvertedY: boolean;
+  setIsInvertedY: (val: boolean) => void;
   isLogScale: boolean;
   setIsLogScale: (val: boolean) => void;
   isSimulationMode: boolean;
@@ -47,6 +53,12 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
   setShowVolume,
   showEMAX,
   setShowEMAX,
+  showEMA20,
+  setShowEMA20,
+  showEMA50,
+  setShowEMA50,
+  isInvertedY,
+  setIsInvertedY,
   isLogScale,
   setIsLogScale,
   isSimulationMode,
@@ -63,11 +75,14 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
 
   return (
     <div className={cn(
-      "flex items-center gap-3 p-4 rounded-xl border transition-colors duration-300 overflow-x-auto no-scrollbar",
+      "flex flex-wrap gap-4 p-4 rounded-xl border transition-colors duration-300 animate-in slide-in-from-top-2 fade-in duration-200",
       isDark ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200"
     )}>
-      <div className="flex items-center gap-2 shrink-0">
-        <div className={cn("flex p-1.5 rounded-lg border", isDark ? "bg-zinc-800 border-zinc-700" : "bg-zinc-100 border-zinc-200", isSmartSRMode && "opacity-50 pointer-events-none")}>
+      
+      {/* Timeframe Group */}
+      <div className="flex flex-col gap-1.5">
+        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Timeframe</span>
+        <div className={cn("flex p-1 rounded-lg border", isDark ? "bg-zinc-800/50 border-zinc-700/50" : "bg-zinc-50 border-zinc-200", isSmartSRMode && "opacity-50 pointer-events-none")}>
           {INTERVALS.map((int) => (
             <button
               key={int.value}
@@ -75,7 +90,7 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
               onClick={() => setInterval(int.value)}
               title={int.title}
               className={cn(
-                "px-4 py-2 text-[12px] font-bold uppercase tracking-tight rounded-md transition-all",
+                "px-3 py-1.5 text-[11px] font-bold uppercase tracking-tight rounded-md transition-all",
                 interval === int.value 
                   ? (isDark ? "bg-zinc-100 text-zinc-900 shadow-sm" : "bg-zinc-900 text-white shadow-sm") 
                   : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
@@ -85,14 +100,18 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
             </button>
           ))}
         </div>
+      </div>
 
-        <div className={cn("flex p-1.5 rounded-lg border", isDark ? "bg-zinc-800 border-zinc-700" : "bg-zinc-100 border-zinc-200", (isSmartSRMode || isScenarioMode) && "opacity-50 pointer-events-none")}>
+      {/* Chart Type Group */}
+      <div className="flex flex-col gap-1.5">
+        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Type</span>
+        <div className={cn("flex p-1 rounded-lg border", isDark ? "bg-zinc-800/50 border-zinc-700/50" : "bg-zinc-50 border-zinc-200", (isSmartSRMode || isScenarioMode) && "opacity-50 pointer-events-none")}>
           <button
             disabled={isSmartSRMode || isScenarioMode}
             onClick={() => setChartType('line')}
             title="Line Chart"
             className={cn(
-              "px-4 py-2 text-[12px] font-bold uppercase tracking-tight rounded-md transition-all",
+              "px-3 py-1.5 text-[11px] font-bold uppercase tracking-tight rounded-md transition-all",
               chartType === 'line' 
                 ? (isDark ? "bg-zinc-100 text-zinc-900 shadow-sm" : "bg-zinc-900 text-white shadow-sm") 
                 : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
@@ -105,7 +124,7 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
             onClick={() => setChartType('candlestick')}
             title="Candlestick Chart"
             className={cn(
-              "px-4 py-2 text-[12px] font-bold uppercase tracking-tight rounded-md transition-all",
+              "px-3 py-1.5 text-[11px] font-bold uppercase tracking-tight rounded-md transition-all",
               chartType === 'candlestick' 
                 ? (isDark ? "bg-zinc-100 text-zinc-900 shadow-sm" : "bg-zinc-900 text-white shadow-sm") 
                 : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
@@ -116,19 +135,72 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
         </div>
       </div>
 
-      <div className="w-px h-8 bg-zinc-200 dark:bg-zinc-800 shrink-0" />
+      {/* Tools Group */}
+      <div className="flex flex-col gap-1.5">
+        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Tools</span>
+        <div className={cn("flex p-1 rounded-lg border gap-1", isDark ? "bg-zinc-800/50 border-zinc-700/50" : "bg-zinc-50 border-zinc-200")}>
+          <button
+            onClick={() => {
+              const nextMode = !isSimulationMode;
+              setIsSimulationMode(nextMode);
+              if (nextMode) setShowEMAX(true);
+            }}
+            title="Simulate Death Cross Prediction"
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
+              isSimulationMode 
+                ? "bg-rose-600 text-white shadow-sm" 
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            )}
+          >
+            <TrendingUp className={cn("w-3.5 h-3.5", isSimulationMode && "animate-pulse")} />
+            SIM
+          </button>
+          <button
+            onClick={() => {
+              setIsSmartSRMode(!isSmartSRMode);
+              if (!isSmartSRMode) setIsSimulationMode(false);
+            }}
+            title="Smart Support/Resistance Backtest"
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
+              isSmartSRMode 
+                ? "bg-emerald-600 text-white shadow-sm" 
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            )}
+          >
+            <TrendingUp className={cn("w-3.5 h-3.5", isSmartSRMode && "animate-pulse")} />
+            S/R
+          </button>
+          <button
+            onClick={onToggleScenario}
+            title="Candlestick Scenario Simulator"
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
+              isScenarioMode 
+                ? "bg-indigo-600 text-white shadow-sm" 
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            )}
+          >
+            <BarChart3 className={cn("w-3.5 h-3.5", isScenarioMode && "animate-pulse")} />
+            GHOST
+          </button>
+        </div>
+      </div>
 
-      <div className="flex items-center gap-2 shrink-0">
-        <div className={cn("flex items-center gap-2", isSmartSRMode && "opacity-50 pointer-events-none")}>
+      {/* Volume Group */}
+      <div className="flex flex-col gap-1.5">
+        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Volume</span>
+        <div className={cn("flex p-1 rounded-lg border gap-1", isDark ? "bg-zinc-800/50 border-zinc-700/50" : "bg-zinc-50 border-zinc-200")}>
           <button
             disabled={isSmartSRMode}
             onClick={() => setShowVolume(!showVolume)}
             title="Toggle Volume"
             className={cn(
-              "px-4 py-2 rounded-md border font-bold text-[12px] uppercase tracking-tight transition-all",
+              "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
               showVolume 
                 ? (isDark ? "bg-zinc-100 text-zinc-900 shadow-sm" : "bg-zinc-900 text-white shadow-sm") 
-                : (isDark ? "bg-zinc-800 border-zinc-700 text-zinc-500" : "bg-white border-zinc-200 text-zinc-400")
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
             )}
           >
             VOL
@@ -138,125 +210,135 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
             onClick={() => setShowVWAP(!showVWAP)}
             title="Volume Weighted Average Price"
             className={cn(
-              "px-4 py-2 rounded-md border font-bold text-[12px] uppercase tracking-tight transition-all",
+              "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
               showVWAP 
-                ? (isDark ? "bg-amber-900/20 border-amber-900/30 text-amber-400" : "bg-amber-50 border-amber-200 text-amber-700 shadow-sm") 
-                : (isDark ? "bg-zinc-800 border-zinc-700 text-zinc-500" : "bg-white border-zinc-200 text-zinc-400")
+                ? (isDark ? "bg-amber-900/40 text-amber-400 shadow-sm" : "bg-amber-100 text-amber-700 shadow-sm") 
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
             )}
           >
             VWAP
           </button>
           <button
             disabled={isSmartSRMode}
-            onClick={() => setShowEMAX(!showEMAX)}
-            title="Exponential Moving Average (50/135)"
-            className={cn(
-              "px-4 py-2 rounded-md border font-bold text-[12px] uppercase tracking-tight transition-all",
-              showEMAX 
-                ? (isDark ? "bg-blue-900/20 border-blue-900/30 text-blue-400" : "bg-blue-50 border-blue-200 text-blue-700 shadow-sm") 
-                : (isDark ? "bg-zinc-800 border-zinc-700 text-zinc-500" : "bg-white border-zinc-200 text-zinc-400")
-            )}
-          >
-            EMA
-          </button>
-          <button
-            disabled={isSmartSRMode}
             onClick={() => setShowOBV(!showOBV)}
             title="On-Balance Volume"
             className={cn(
-              "px-4 py-2 rounded-md border font-bold text-[12px] uppercase tracking-tight transition-all",
+              "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
               showOBV 
-                ? (isDark ? "bg-purple-900/20 border-purple-900/30 text-purple-400" : "bg-purple-50 border-purple-200 text-purple-700 shadow-sm") 
-                : (isDark ? "bg-zinc-800 border-zinc-700 text-zinc-500" : "bg-white border-zinc-200 text-zinc-400")
+                ? (isDark ? "bg-purple-900/40 text-purple-400 shadow-sm" : "bg-purple-100 text-purple-700 shadow-sm") 
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
             )}
           >
             OBV
           </button>
+        </div>
+      </div>
+
+      {/* Trend Group */}
+      <div className="flex flex-col gap-1.5">
+        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Trend</span>
+        <div className={cn("flex p-1 rounded-lg border gap-1", isDark ? "bg-zinc-800/50 border-zinc-700/50" : "bg-zinc-50 border-zinc-200")}>
+          <button
+            disabled={isSmartSRMode}
+            onClick={() => setShowEMA20(!showEMA20)}
+            title="EMA 20 (Blue)"
+            className={cn(
+              "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
+              showEMA20 
+                ? "bg-blue-500 text-white shadow-sm" 
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            )}
+          >
+            EMA 20
+          </button>
+          <button
+            disabled={isSmartSRMode}
+            onClick={() => setShowEMA50(!showEMA50)}
+            title="EMA 50 (Pink)"
+            className={cn(
+              "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
+              showEMA50 
+                ? "bg-pink-500 text-white shadow-sm" 
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            )}
+          >
+            EMA 50
+          </button>
+          <button
+            disabled={isSmartSRMode}
+            onClick={() => setShowEMAX(!showEMAX)}
+            title="Exponential Moving Average (50/135)"
+            className={cn(
+              "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
+              showEMAX 
+                ? (isDark ? "bg-blue-900/40 text-blue-400 shadow-sm" : "bg-blue-100 text-blue-700 shadow-sm") 
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            )}
+          >
+            EMA+
+          </button>
+        </div>
+      </div>
+
+      {/* View Group */}
+      <div className="flex flex-col gap-1.5">
+        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">View</span>
+        <div className={cn("flex p-1 rounded-lg border gap-1", isDark ? "bg-zinc-800/50 border-zinc-700/50" : "bg-zinc-50 border-zinc-200")}>
           <button
             disabled={isSmartSRMode}
             onClick={() => setIsLogScale(!isLogScale)}
             title="Toggle Logarithmic Scale"
             className={cn(
-              "px-4 py-2 rounded-md border font-bold text-[12px] uppercase tracking-tight transition-all",
+              "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
               isLogScale 
-                ? (isDark ? "bg-indigo-900/20 border-indigo-900/30 text-indigo-400" : "bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm") 
-                : (isDark ? "bg-zinc-800 border-zinc-700 text-zinc-500" : "bg-white border-zinc-200 text-zinc-400")
+                ? (isDark ? "bg-indigo-900/40 text-indigo-400 shadow-sm" : "bg-indigo-100 text-indigo-700 shadow-sm") 
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
             )}
           >
             LOG
           </button>
+          <button
+            onClick={() => setIsInvertedY(!isInvertedY)}
+            title="Invert Y-Axis (Prices)"
+            className={cn(
+              "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
+              isInvertedY 
+                ? "bg-rose-500 text-white shadow-sm" 
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            )}
+          >
+            INVERT Y
+          </button>
         </div>
-
-        <div className="w-px h-8 bg-zinc-200 dark:bg-zinc-800 mx-1" />
-
-        <button
-          onClick={() => {
-            const nextMode = !isSimulationMode;
-            setIsSimulationMode(nextMode);
-            if (nextMode) setShowEMAX(true);
-          }}
-          title="Simulate Death Cross Prediction"
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-md border font-bold text-[12px] uppercase tracking-tight transition-all",
-            isSimulationMode 
-              ? "bg-rose-600 border-rose-700 text-white shadow-lg shadow-rose-900/20" 
-              : (isDark ? "bg-zinc-800 border-zinc-700 text-zinc-500" : "bg-white border-zinc-200 text-zinc-400")
-          )}
-        >
-          <TrendingUp className={cn("w-4 h-4", isSimulationMode && "animate-pulse")} />
-          SIM
-        </button>
-        <button
-          onClick={() => {
-            setIsSmartSRMode(!isSmartSRMode);
-            if (!isSmartSRMode) setIsSimulationMode(false);
-          }}
-          title="Smart Support/Resistance Backtest"
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-md border font-bold text-[12px] uppercase tracking-tight transition-all",
-            isSmartSRMode 
-              ? "bg-emerald-600 border-emerald-700 text-white shadow-lg shadow-emerald-900/20" 
-              : (isDark ? "bg-zinc-800 border-zinc-700 text-zinc-500" : "bg-white border-zinc-200 text-zinc-400")
-          )}
-        >
-          <TrendingUp className={cn("w-4 h-4", isSmartSRMode && "animate-pulse")} />
-          S/R
-        </button>
-        <button
-          onClick={onToggleScenario}
-          title="Candlestick Scenario Simulator"
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-md border font-bold text-[12px] uppercase tracking-tight transition-all",
-            isScenarioMode 
-              ? "bg-indigo-600 border-indigo-700 text-white shadow-lg shadow-indigo-900/20" 
-              : (isDark ? "bg-zinc-800 border-zinc-700 text-zinc-500" : "bg-white border-zinc-200 text-zinc-400")
-          )}
-        >
-          <BarChart3 className={cn("w-4 h-4", isScenarioMode && "animate-pulse")} />
-          GHOST
-        </button>
-
-        <button
-          onClick={onRefresh}
-          className={cn(
-            "p-1.5 rounded-md border transition-all",
-            isDark ? "bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-zinc-100" : "bg-white border-zinc-200 text-zinc-400 hover:text-zinc-900 shadow-sm"
-          )}
-          title="Refresh Data"
-        >
-          <RefreshCcw className="w-4 h-4" />
-        </button>
-        <button
-          onClick={onReset}
-          className={cn(
-            "p-1.5 rounded-md border transition-all",
-            isDark ? "bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-zinc-100" : "bg-white border-zinc-200 text-zinc-400 hover:text-zinc-900 shadow-sm"
-          )}
-          title="Reset View"
-        >
-          <BarChart3 className="w-4 h-4" />
-        </button>
       </div>
+
+      {/* Actions Group */}
+      <div className="flex flex-col gap-1.5 ml-auto">
+        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest text-right">Actions</span>
+        <div className={cn("flex p-1 rounded-lg border gap-1", isDark ? "bg-zinc-800/50 border-zinc-700/50" : "bg-zinc-50 border-zinc-200")}>
+          <button
+            onClick={onRefresh}
+            className={cn(
+              "p-1.5 rounded-md transition-all",
+              isDark ? "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700" : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200"
+            )}
+            title="Refresh Data"
+          >
+            <RefreshCcw className="w-4 h-4" />
+          </button>
+          <button
+            onClick={onReset}
+            className={cn(
+              "p-1.5 rounded-md transition-all",
+              isDark ? "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700" : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200"
+            )}
+            title="Reset View"
+          >
+            <BarChart3 className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
     </div>
   );
 };

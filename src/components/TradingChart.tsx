@@ -15,6 +15,9 @@ interface ChartProps {
   showOBV: boolean;
   showVolume: boolean;
   showEMAX: boolean;
+  showEMA20?: boolean;
+  showEMA50?: boolean;
+  isInvertedY?: boolean;
   chartType: 'line' | 'candlestick';
   onHover: (data: StockData | null) => void;
   onRightClick: (data: StockData, x: number, y: number) => void;
@@ -46,6 +49,9 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
   showOBV,
   showVolume,
   showEMAX,
+  showEMA20,
+  showEMA50,
+  isInvertedY,
   chartType,
   onHover,
   onRightClick,
@@ -227,7 +233,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
       ? d3.scaleLog().clamp(true)
       : d3.scaleLinear();
     
-    y.range([mainAreaHeight + margin.top, margin.top]);
+    y.range(isInvertedY ? [margin.top, mainAreaHeight + margin.top] : [mainAreaHeight + margin.top, margin.top]);
 
     // Initial domains and zoom
     const pointsToShow = 100;
@@ -273,9 +279,13 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
     const g = svg.append('g');
     
     // Watermark
+    const latestData = data[data.length - 1];
+    const latestDate = latestData ? new Date(latestData.date) : new Date();
+    const formattedDate = format(latestDate, "d MMMM yyyy 'Time' HH.mm");
+
     g.append('text')
       .attr('x', width / 2)
-      .attr('y', mainAreaHeight / 2 + margin.top)
+      .attr('y', mainAreaHeight / 2 + margin.top - 20)
       .attr('text-anchor', 'middle')
       .attr('dominant-baseline', 'central')
       .attr('class', cn(
@@ -283,6 +293,17 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
         isDark ? "fill-white" : "fill-black"
       ))
       .text(symbol);
+
+    g.append('text')
+      .attr('x', width / 2)
+      .attr('y', mainAreaHeight / 2 + margin.top + 60)
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'central')
+      .attr('class', cn(
+        "text-[24px] font-bold uppercase tracking-widest select-none pointer-events-none opacity-[0.05]",
+        isDark ? "fill-white" : "fill-black"
+      ))
+      .text(formattedDate);
 
     const chartContent = g.append('g').attr('clip-path', 'url(#main-clip)');
 
@@ -385,6 +406,34 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
           .attr('stroke-width', 2)
           .attr('stroke-dasharray', '6,3')
           .attr('d', vwapLine);
+      }
+
+      if (showEMA20) {
+        const ema20Line = d3.line<StockData>()
+          .x((d, i) => xScale(data.indexOf(d)))
+          .y(d => yScale(d.ema20 || 0))
+          .curve(d3.curveMonotoneX);
+
+        chartContent.append('path')
+          .datum(data.filter((d, i) => i <= maxIdx && d.ema20))
+          .attr('fill', 'none')
+          .attr('stroke', '#3b82f6')
+          .attr('stroke-width', 1.5)
+          .attr('d', ema20Line);
+      }
+
+      if (showEMA50) {
+        const ema50Line = d3.line<StockData>()
+          .x((d, i) => xScale(data.indexOf(d)))
+          .y(d => yScale(d.ema50 || 0))
+          .curve(d3.curveMonotoneX);
+
+        chartContent.append('path')
+          .datum(data.filter((d, i) => i <= maxIdx && d.ema50))
+          .attr('fill', 'none')
+          .attr('stroke', '#f472b6')
+          .attr('stroke-width', 1.5)
+          .attr('d', ema50Line);
       }
 
       if (showEMAX) {
@@ -909,10 +958,14 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
 
   }, [
     data,
+    symbol,
     showVWAP,
     showOBV,
     showVolume,
     showEMAX,
+    showEMA20,
+    showEMA50,
+    isInvertedY,
     chartType,
     resetTrigger,
     theme,

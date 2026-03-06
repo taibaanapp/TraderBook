@@ -4,7 +4,12 @@ import YahooFinance from 'yahoo-finance2';
 import Database from 'better-sqlite3';
 import path from 'path';
 
-const yahooFinance = new YahooFinance();
+const yahooFinance = new YahooFinance({
+  validation: {
+    logErrors: false,
+    logOptionsErrors: false
+  }
+});
 const dbPath = process.env.DATABASE_PATH || 'data.db';
 const db = new Database(dbPath);
 
@@ -273,7 +278,17 @@ async function startServer() {
     const { symbol } = req.params;
     try {
       console.log(`Fetching news for: ${symbol}`);
-      const result = await yahooFinance.search(symbol, { newsCount: 5 });
+      const safeYahooCall = async (fn: () => Promise<any>) => {
+        try {
+          return await fn();
+        } catch (e: any) {
+          if (e.name === 'FailedYahooValidationError' && e.result) {
+            return e.result;
+          }
+          throw e;
+        }
+      };
+      const result = await safeYahooCall(() => yahooFinance.search(symbol, { newsCount: 5 }));
       console.log(`News found for ${symbol}: ${result.news?.length || 0}`);
       res.json(result.news || []);
     } catch (error) {
@@ -505,10 +520,21 @@ async function startServer() {
         AND timestamp < ?
       `).all(Date.now() - 5 * 24 * 60 * 60 * 1000) as any[];
 
+      const safeYahooCall = async (fn: () => Promise<any>) => {
+        try {
+          return await fn();
+        } catch (e: any) {
+          if (e.name === 'FailedYahooValidationError' && e.result) {
+            return e.result;
+          }
+          throw e;
+        }
+      };
+
       for (const pred of pending) {
         try {
           // Fetch historical data to check price after 5, 10, 20 days
-          const history = await yahooFinance.chart(pred.symbol, { period1: pred.date, interval: '1d' });
+          const history = await safeYahooCall(() => yahooFinance.chart(pred.symbol, { period1: pred.date, interval: '1d' }));
           if (history && history.quotes) {
             const quotes = history.quotes.filter(q => q.date > new Date(pred.date));
             
@@ -564,9 +590,21 @@ async function startServer() {
         'recommendationTrend'
       ];
 
+      // Helper to handle validation errors and return the result anyway
+      const safeYahooCall = async (fn: () => Promise<any>) => {
+        try {
+          return await fn();
+        } catch (e: any) {
+          if (e.name === 'FailedYahooValidationError' && e.result) {
+            return e.result;
+          }
+          throw e;
+        }
+      };
+
       let result;
       try {
-        result = await yahooFinance.quoteSummary(symbol, { modules: modules as any });
+        result = await safeYahooCall(() => yahooFinance.quoteSummary(symbol, { modules: modules as any }));
       } catch (e: any) {
         console.error(`QuoteSummary Error for ${symbol}:`, e.message);
         // If it's a "not found" error, return 404
@@ -734,14 +772,26 @@ async function startServer() {
       // Determine Index Symbol
       const indexSymbol = symbol.endsWith('.BK') ? '^SET.BK' : '^GSPC';
 
+      // Helper to handle validation errors and return the result anyway
+      const safeYahooCall = async (fn: () => Promise<any>) => {
+        try {
+          return await fn();
+        } catch (e: any) {
+          if (e.name === 'FailedYahooValidationError' && e.result) {
+            return e.result;
+          }
+          throw e;
+        }
+      };
+
       // Fetch chart data, index data, and current fundamentals in parallel
       let chartResult, indexResult, quoteResult, profileResult;
       try {
         [chartResult, indexResult, quoteResult, profileResult] = await Promise.all([
-          yahooFinance.chart(symbol, queryOptions) as Promise<any>,
-          yahooFinance.chart(indexSymbol, queryOptions).catch(() => null) as Promise<any>,
-          yahooFinance.quote(symbol).catch(() => null) as Promise<any>,
-          yahooFinance.quoteSummary(symbol, { modules: ['assetProfile'] }).catch(() => null) as Promise<any>
+          safeYahooCall(() => yahooFinance.chart(symbol, queryOptions)),
+          safeYahooCall(() => yahooFinance.chart(indexSymbol, queryOptions)).catch(() => null),
+          safeYahooCall(() => yahooFinance.quote(symbol)).catch(() => null),
+          safeYahooCall(() => yahooFinance.quoteSummary(symbol, { modules: ['assetProfile'] })).catch(() => null)
         ]);
       } catch (e: any) {
         console.error(`Yahoo Finance API Error for ${symbol}:`, e.message);

@@ -63,12 +63,17 @@ export const Legend: React.FC<LegendProps> = ({ theme }) => {
           
           <div className="flex items-center gap-3 p-1 transition-all">
             <div className="w-2.5 h-2.5 rounded-full bg-[#3b82f6]" />
-            <p className={cn("text-xs font-bold", isDark ? "text-zinc-300" : "text-zinc-700")}>EMA 50 (Blue)</p>
+            <p className={cn("text-xs font-bold", isDark ? "text-zinc-300" : "text-zinc-700")}>EMA 20 (Blue)</p>
           </div>
 
           <div className="flex items-center gap-3 p-1 transition-all">
             <div className="w-2.5 h-2.5 rounded-full bg-[#f472b6]" />
-            <p className={cn("text-xs font-bold", isDark ? "text-zinc-300" : "text-zinc-700")}>EMA 135 (Pink)</p>
+            <p className={cn("text-xs font-bold", isDark ? "text-zinc-300" : "text-zinc-700")}>EMA 50 (Pink)</p>
+          </div>
+
+          <div className="flex items-center gap-3 p-1 transition-all">
+            <div className="w-2.5 h-2.5 rounded-full bg-[#9333ea]" />
+            <p className={cn("text-xs font-bold", isDark ? "text-zinc-300" : "text-zinc-700")}>EMA 135 (Purple)</p>
           </div>
         </div>
       </div>

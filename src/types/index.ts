@@ -7,6 +7,7 @@ export interface StockData {
   volume: number;
   vwap?: number;
   obv?: number;
+  ema20?: number;
   ema50?: number;
   ema135?: number;
   finalScore?: number;

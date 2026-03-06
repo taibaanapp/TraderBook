@@ -16,7 +16,9 @@ import {
   Sun,
   Brain,
   Activity,
-  Settings
+  Settings,
+  SlidersHorizontal,
+  History as HistoryIcon
 } from 'lucide-react';
 import { STOCK_LIST, TH_STOCKS, US_STOCKS } from './constants/stockList';
 import { TradingChart } from './components/TradingChart';
@@ -63,6 +65,9 @@ export default function App() {
   const [showOBV, setShowOBV] = useState(false);
   const [showVolume, setShowVolume] = useState(false);
   const [showEMAX, setShowEMAX] = useState(false);
+  const [showEMA20, setShowEMA20] = useState(false);
+  const [showEMA50, setShowEMA50] = useState(false);
+  const [isInvertedY, setIsInvertedY] = useState(false);
   const [isSimulationMode, setIsSimulationMode] = useState(false);
   const [simulationRate, setSimulationRate] = useState(-1.5);
   const [chartType, setChartType] = useState<'line' | 'candlestick'>('line');
@@ -91,11 +96,15 @@ export default function App() {
   const [isSimulationExpanded, setIsSimulationExpanded] = useState(true);
   const [isFinancialsExpanded, setIsFinancialsExpanded] = useState(false);
   const [isAiInsightEnabled, setIsAiInsightEnabled] = useState(false);
-  const [showTicker, setShowTicker] = useState(true);
-  const [showStockProfile, setShowStockProfile] = useState(true);
-  const [showFinancials, setShowFinancials] = useState(true);
-  const [showGeminiNews, setShowGeminiNews] = useState(true);
-  const [showSaveImage, setShowSaveImage] = useState(true);
+  const [showTicker, setShowTicker] = useState(false);
+  const [showStockProfile, setShowStockProfile] = useState(false);
+  const [showFinancials, setShowFinancials] = useState(false);
+  const [showGeminiNews, setShowGeminiNews] = useState(false);
+  const [showSaveImage, setShowSaveImage] = useState(false);
+  const [showChartControls, setShowChartControls] = useState(false);
+  const [showRecentStocks, setShowRecentStocks] = useState(true);
+  const [showNotebook, setShowNotebook] = useState(true);
+  const [recentStocks, setRecentStocks] = useState<{symbol: string, percentChange: number, timestamp: number}[]>([]);
   
   // Modal states
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -268,6 +277,11 @@ export default function App() {
       setTheme('dark');
     }
 
+    const savedAiInsight = localStorage.getItem('isAiInsightEnabled');
+    if (savedAiInsight !== null) {
+      setIsAiInsightEnabled(savedAiInsight === 'true');
+    }
+
     const savedTicker = localStorage.getItem('showTicker');
     if (savedTicker !== null) {
       setShowTicker(savedTicker === 'true');
@@ -292,12 +306,80 @@ export default function App() {
     if (savedSaveImage !== null) {
       setShowSaveImage(savedSaveImage === 'true');
     }
+
+    const savedEMA20 = localStorage.getItem('showEMA20');
+    if (savedEMA20 !== null) {
+      setShowEMA20(savedEMA20 === 'true');
+    }
+
+    const savedEMA50 = localStorage.getItem('showEMA50');
+    if (savedEMA50 !== null) {
+      setShowEMA50(savedEMA50 === 'true');
+    }
+
+    const savedInvertedY = localStorage.getItem('isInvertedY');
+    if (savedInvertedY !== null) {
+      setIsInvertedY(savedInvertedY === 'true');
+    }
+
+    const savedVWAP = localStorage.getItem('showVWAP');
+    if (savedVWAP !== null) {
+      setShowVWAP(savedVWAP === 'true');
+    }
+
+    const savedOBV = localStorage.getItem('showOBV');
+    if (savedOBV !== null) {
+      setShowOBV(savedOBV === 'true');
+    }
+
+    const savedVolume = localStorage.getItem('showVolume');
+    if (savedVolume !== null) {
+      setShowVolume(savedVolume === 'true');
+    }
+
+    const savedEMAX = localStorage.getItem('showEMAX');
+    if (savedEMAX !== null) {
+      setShowEMAX(savedEMAX === 'true');
+    }
+
+    const savedLogScale = localStorage.getItem('isLogScale');
+    if (savedLogScale !== null) {
+      setIsLogScale(savedLogScale === 'true');
+    }
+
+    const savedChartControls = localStorage.getItem('showChartControls');
+    if (savedChartControls !== null) {
+      setShowChartControls(savedChartControls === 'true');
+    }
+
+    const savedShowRecentStocks = localStorage.getItem('showRecentStocks');
+    if (savedShowRecentStocks !== null) {
+      setShowRecentStocks(savedShowRecentStocks === 'true');
+    }
+
+    const savedShowNotebook = localStorage.getItem('showNotebook');
+    if (savedShowNotebook !== null) {
+      setShowNotebook(savedShowNotebook === 'true');
+    }
+
+    const savedRecentStocks = localStorage.getItem('recentStocks');
+    if (savedRecentStocks) {
+      try {
+        setRecentStocks(JSON.parse(savedRecentStocks));
+      } catch (e) {
+        console.error('Failed to parse recent stocks', e);
+      }
+    }
   }, []);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
     localStorage.setItem('theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem('isAiInsightEnabled', String(isAiInsightEnabled));
+  }, [isAiInsightEnabled]);
 
   useEffect(() => {
     localStorage.setItem('showTicker', String(showTicker));
@@ -318,6 +400,54 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('showSaveImage', String(showSaveImage));
   }, [showSaveImage]);
+
+  useEffect(() => {
+    localStorage.setItem('showEMA20', String(showEMA20));
+  }, [showEMA20]);
+
+  useEffect(() => {
+    localStorage.setItem('showEMA50', String(showEMA50));
+  }, [showEMA50]);
+
+  useEffect(() => {
+    localStorage.setItem('isInvertedY', String(isInvertedY));
+  }, [isInvertedY]);
+
+  useEffect(() => {
+    localStorage.setItem('showVWAP', String(showVWAP));
+  }, [showVWAP]);
+
+  useEffect(() => {
+    localStorage.setItem('showOBV', String(showOBV));
+  }, [showOBV]);
+
+  useEffect(() => {
+    localStorage.setItem('showVolume', String(showVolume));
+  }, [showVolume]);
+
+  useEffect(() => {
+    localStorage.setItem('showEMAX', String(showEMAX));
+  }, [showEMAX]);
+
+  useEffect(() => {
+    localStorage.setItem('isLogScale', String(isLogScale));
+  }, [isLogScale]);
+
+  useEffect(() => {
+    localStorage.setItem('showChartControls', String(showChartControls));
+  }, [showChartControls]);
+
+  useEffect(() => {
+    localStorage.setItem('showRecentStocks', String(showRecentStocks));
+  }, [showRecentStocks]);
+
+  useEffect(() => {
+    localStorage.setItem('showNotebook', String(showNotebook));
+  }, [showNotebook]);
+
+  useEffect(() => {
+    localStorage.setItem('recentStocks', JSON.stringify(recentStocks));
+  }, [recentStocks]);
 
   const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
 
@@ -486,6 +616,7 @@ export default function App() {
 
     let data = calculateCompositeMoneyFlow(rawData);
     data = calculateVWAP(data);
+    data = calculateEMA(data, 20, 'ema20');
     data = calculateEMA(data, 50, 'ema50');
     data = calculateEMA(data, 135, 'ema135');
     data = calculateRSI(data);
@@ -580,6 +711,20 @@ export default function App() {
   useEffect(() => {
     fetchData(symbol, interval);
   }, [symbol, interval]);
+
+  useEffect(() => {
+    if (stockData && stockData.data && stockData.data.length >= 2) {
+      const latest = stockData.data[stockData.data.length - 1].close;
+      const previous = stockData.data[stockData.data.length - 2].close;
+      const pctChange = ((latest - previous) / previous) * 100;
+      
+      setRecentStocks(prev => {
+        const newStocks = prev.filter(s => s.symbol !== symbol);
+        newStocks.unshift({ symbol, percentChange: pctChange, timestamp: Date.now() });
+        return newStocks.slice(0, 20);
+      });
+    }
+  }, [stockData, symbol]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -816,6 +961,19 @@ export default function App() {
                 <Activity className="w-5 h-5" />
               </button>
               <button
+                onClick={() => setShowChartControls(!showChartControls)}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2.5 rounded-2xl border transition-all shadow-sm hover:shadow-md active:scale-95",
+                  showChartControls
+                    ? (theme === 'dark' ? "bg-zinc-700 border-zinc-600 text-zinc-100" : "bg-zinc-100 border-zinc-300 text-zinc-900")
+                    : (theme === 'dark' ? "bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700" : "bg-white border-zinc-200 text-zinc-500 hover:bg-zinc-50")
+                )}
+                title="Indicators & Tools"
+              >
+                <SlidersHorizontal className="w-5 h-5" />
+                <span className="text-sm font-bold uppercase tracking-tight">IND</span>
+              </button>
+              <button
                 onClick={() => setIsSettingsOpen(true)}
                 className={cn(
                   "p-2.5 rounded-2xl border transition-all shadow-sm hover:shadow-md active:scale-95",
@@ -914,12 +1072,50 @@ export default function App() {
                   onToggleAi={() => setIsAiInsightEnabled(!isAiInsightEnabled)}
                 />
               )}
-              <StockNotebook 
-                symbol={symbol} 
-                currentPrice={latestPrice || 0} 
-                currency={stockData?.currency} 
-                theme={theme}
-              />
+              
+              {showRecentStocks && recentStocks.length > 0 && (
+                <div className={cn(
+                  "rounded-2xl border p-4 transition-colors duration-300",
+                  theme === 'dark' ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200"
+                )}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <HistoryIcon className={cn("w-4 h-4", theme === 'dark' ? "text-zinc-400" : "text-zinc-500")} />
+                    <h3 className={cn("text-xs font-bold uppercase tracking-widest", theme === 'dark' ? "text-zinc-400" : "text-zinc-500")}>
+                      Recently Viewed
+                    </h3>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {recentStocks.map((stock) => (
+                      <button
+                        key={stock.symbol}
+                        onClick={() => {
+                          setSymbol(stock.symbol);
+                          setSearchInput(stock.symbol);
+                        }}
+                        className={cn(
+                          "px-2 py-1 rounded-md text-[10px] font-bold tracking-wider transition-colors border",
+                          stock.percentChange > 0 
+                            ? (theme === 'dark' ? "bg-emerald-900/20 border-emerald-900/30 text-emerald-400 hover:bg-emerald-900/40" : "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100")
+                            : stock.percentChange < 0
+                              ? (theme === 'dark' ? "bg-rose-900/20 border-rose-900/30 text-rose-400 hover:bg-rose-900/40" : "bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100")
+                              : (theme === 'dark' ? "bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700" : "bg-zinc-100 border-zinc-200 text-zinc-600 hover:bg-zinc-200")
+                        )}
+                      >
+                        #{stock.symbol}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {showNotebook && (
+                <StockNotebook 
+                  symbol={symbol} 
+                  currentPrice={latestPrice || 0} 
+                  currency={stockData?.currency} 
+                  theme={theme}
+                />
+              )}
             </div>
 
             {/* Center Column */}
@@ -934,35 +1130,43 @@ export default function App() {
                 theme={theme}
               />
 
-              <ChartControls 
-                interval={interval}
-                setInterval={setInterval}
-                chartType={chartType}
-                setChartType={setChartType}
-                showVWAP={showVWAP}
-                setShowVWAP={setShowVWAP}
-                showOBV={showOBV}
-                setShowOBV={setShowOBV}
-                showVolume={showVolume}
-                setShowVolume={setShowVolume}
-                showEMAX={showEMAX}
-                setShowEMAX={setShowEMAX}
-                isLogScale={isLogScale}
-                setIsLogScale={setIsLogScale}
-                isSimulationMode={isSimulationMode}
-                setIsSimulationMode={setIsSimulationMode}
-                isSmartSRMode={isSmartSRMode}
-                setIsSmartSRMode={setIsSmartSRMode}
-                isScenarioMode={isScenarioMode}
-                onToggleScenario={handleScenarioToggle}
-                onReset={() => {
-                  setResetTrigger(prev => prev + 1);
-                  setIsSimulationMode(false);
-                  setIsSmartSRMode(false);
-                }}
-                onRefresh={() => fetchData(symbol, interval, true)}
-                theme={theme}
-              />
+              {showChartControls && (
+                <ChartControls 
+                  interval={interval}
+                  setInterval={setInterval}
+                  chartType={chartType}
+                  setChartType={setChartType}
+                  showVWAP={showVWAP}
+                  setShowVWAP={setShowVWAP}
+                  showOBV={showOBV}
+                  setShowOBV={setShowOBV}
+                  showVolume={showVolume}
+                  setShowVolume={setShowVolume}
+                  showEMAX={showEMAX}
+                  setShowEMAX={setShowEMAX}
+                  showEMA20={showEMA20}
+                  setShowEMA20={setShowEMA20}
+                  showEMA50={showEMA50}
+                  setShowEMA50={setShowEMA50}
+                  isInvertedY={isInvertedY}
+                  setIsInvertedY={setIsInvertedY}
+                  isLogScale={isLogScale}
+                  setIsLogScale={setIsLogScale}
+                  isSimulationMode={isSimulationMode}
+                  setIsSimulationMode={setIsSimulationMode}
+                  isSmartSRMode={isSmartSRMode}
+                  setIsSmartSRMode={setIsSmartSRMode}
+                  isScenarioMode={isScenarioMode}
+                  onToggleScenario={handleScenarioToggle}
+                  onReset={() => {
+                    setResetTrigger(prev => prev + 1);
+                    setIsSimulationMode(false);
+                    setIsSmartSRMode(false);
+                  }}
+                  onRefresh={() => fetchData(symbol, interval, true)}
+                  theme={theme}
+                />
+              )}
 
               {/* Chart */}
               <div className={cn(
@@ -990,6 +1194,9 @@ export default function App() {
                     showOBV={showOBV} 
                     showVolume={showVolume}
                     showEMAX={showEMAX}
+                    showEMA20={showEMA20}
+                    showEMA50={showEMA50}
+                    isInvertedY={isInvertedY}
                     chartType={chartType}
                     onHover={setHoveredData}
                     onRightClick={(data, x, y) => {
@@ -1496,6 +1703,10 @@ export default function App() {
         onToggleGeminiNews={() => setShowGeminiNews(!showGeminiNews)}
         showSaveImage={showSaveImage}
         onToggleSaveImage={() => setShowSaveImage(!showSaveImage)}
+        showRecentStocks={showRecentStocks}
+        onToggleRecentStocks={() => setShowRecentStocks(!showRecentStocks)}
+        showNotebook={showNotebook}
+        onToggleNotebook={() => setShowNotebook(!showNotebook)}
       />
 
       <ReversalDashboard 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Settings, Brain, Power, Monitor, BarChart2, Search, Image } from 'lucide-react';
+import { X, Settings, Brain, Power, Monitor, BarChart2, Search, Image as ImageIcon, History as HistoryIcon, BookOpen } from 'lucide-react';
 import { cn } from '../utils/cn';
 
 interface SettingsModalProps {
@@ -18,6 +18,10 @@ interface SettingsModalProps {
   onToggleGeminiNews: () => void;
   showSaveImage: boolean;
   onToggleSaveImage: () => void;
+  showRecentStocks: boolean;
+  onToggleRecentStocks: () => void;
+  showNotebook: boolean;
+  onToggleNotebook: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -35,7 +39,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   showGeminiNews,
   onToggleGeminiNews,
   showSaveImage,
-  onToggleSaveImage
+  onToggleSaveImage,
+  showRecentStocks,
+  onToggleRecentStocks,
+  showNotebook,
+  onToggleNotebook
 }) => {
   const isDark = theme === 'dark';
 
@@ -256,7 +264,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   ? (isDark ? "bg-violet-900/30 text-violet-400" : "bg-violet-100 text-violet-600")
                   : (isDark ? "bg-zinc-800 text-zinc-500" : "bg-zinc-200 text-zinc-500")
               )}>
-                <Image className="w-5 h-5" />
+                <ImageIcon className="w-5 h-5" />
               </div>
               <div>
                 <h3 className={cn("text-sm font-bold", isDark ? "text-zinc-100" : "text-zinc-900")}>
@@ -320,6 +328,85 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className={cn(
                 "w-3 h-3 rounded-full bg-white absolute top-1 transition-transform",
                 showFinancials ? "left-6" : "left-1"
+              )} />
+            </button>
+          </div>
+          {/* Recent Stocks Toggle */}
+          <div className={cn(
+            "p-4 rounded-2xl border flex items-center justify-between transition-colors",
+            isDark ? "bg-zinc-800/30 border-zinc-800" : "bg-zinc-50 border-zinc-100"
+          )}>
+            <div className="flex items-center gap-4">
+              <div className={cn(
+                "w-10 h-10 rounded-xl flex items-center justify-center",
+                showRecentStocks 
+                  ? (isDark ? "bg-cyan-900/30 text-cyan-400" : "bg-cyan-100 text-cyan-600")
+                  : (isDark ? "bg-zinc-800 text-zinc-500" : "bg-zinc-200 text-zinc-500")
+              )}>
+                <HistoryIcon className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className={cn("text-sm font-bold", isDark ? "text-zinc-100" : "text-zinc-900")}>
+                  Recently Viewed
+                </h3>
+                <p className="text-[10px] text-zinc-500 mt-0.5">
+                  Show history of recently viewed stocks
+                </p>
+              </div>
+            </div>
+            
+            <button
+              onClick={onToggleRecentStocks}
+              className={cn(
+                "w-10 h-5 rounded-full transition-colors relative",
+                showRecentStocks 
+                  ? "bg-cyan-500" 
+                  : (isDark ? "bg-zinc-700" : "bg-zinc-300")
+              )}
+            >
+              <div className={cn(
+                "w-3 h-3 rounded-full bg-white absolute top-1 transition-transform",
+                showRecentStocks ? "left-6" : "left-1"
+              )} />
+            </button>
+          </div>
+
+          {/* Notebook Toggle */}
+          <div className={cn(
+            "p-4 rounded-2xl border flex items-center justify-between transition-colors",
+            isDark ? "bg-zinc-800/30 border-zinc-800" : "bg-zinc-50 border-zinc-100"
+          )}>
+            <div className="flex items-center gap-4">
+              <div className={cn(
+                "w-10 h-10 rounded-xl flex items-center justify-center",
+                showNotebook 
+                  ? (isDark ? "bg-fuchsia-900/30 text-fuchsia-400" : "bg-fuchsia-100 text-fuchsia-600")
+                  : (isDark ? "bg-zinc-800 text-zinc-500" : "bg-zinc-200 text-zinc-500")
+              )}>
+                <BookOpen className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className={cn("text-sm font-bold", isDark ? "text-zinc-100" : "text-zinc-900")}>
+                  Stock Notebook
+                </h3>
+                <p className="text-[10px] text-zinc-500 mt-0.5">
+                  Show personal notes for each stock
+                </p>
+              </div>
+            </div>
+            
+            <button
+              onClick={onToggleNotebook}
+              className={cn(
+                "w-10 h-5 rounded-full transition-colors relative",
+                showNotebook 
+                  ? "bg-fuchsia-500" 
+                  : (isDark ? "bg-zinc-700" : "bg-zinc-300")
+              )}
+            >
+              <div className={cn(
+                "w-3 h-3 rounded-full bg-white absolute top-1 transition-transform",
+                showNotebook ? "left-6" : "left-1"
               )} />
             </button>
           </div>
