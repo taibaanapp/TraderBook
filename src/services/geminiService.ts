@@ -1,6 +1,17 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let ai: GoogleGenAI | null = null;
+
+const getAI = () => {
+  if (!ai) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("Gemini API Key is missing. Please check your environment variables.");
+    }
+    ai = new GoogleGenAI({ apiKey });
+  }
+  return ai;
+};
 
 export interface StockProfileData {
   description: string;
@@ -32,7 +43,7 @@ export async function getStockProfile(symbol: string, exchange?: string): Promis
   Format the response in JSON with the following keys: "description", "revenue", "competitors", "outlook". 
   The values should be strings or arrays of strings as appropriate. Use professional Thai language.`;
 
-  const response = await ai.models.generateContent({
+  const response = await getAI().models.generateContent({
     model: "gemini-3-flash-preview",
     contents: [{ parts: [{ text: prompt }] }],
     config: {
@@ -66,7 +77,7 @@ export async function getGeminiNewsAnalysis(symbol: string, date: string): Promi
   - social_posts: รายการความคิดเห็น (author, content, url)
   - ai_analysis: บทวิเคราะห์เชิงลึก (summary, recommendation, details)`;
 
-  const response = await ai.models.generateContent({
+  const response = await getAI().models.generateContent({
     model: "gemini-3-flash-preview",
     contents: [{ parts: [{ text: prompt }] }],
     config: {
