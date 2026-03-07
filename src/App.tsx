@@ -17,6 +17,7 @@ import {
   Brain,
   Activity,
   Settings,
+  HelpCircle,
   SlidersHorizontal,
   History as HistoryIcon
 } from 'lucide-react';
@@ -39,11 +40,13 @@ import { Logo } from './components/Logo';
 import { MarketTicker } from './components/MarketTicker';
 import { SimTradePanel } from './components/SimTradePanel';
 import { calculateCompositeMoneyFlow, calculateVWAP, calculateEMA, calculateRSI, calculateMACD } from './services/indicatorService';
+import { calculateMoneyFlow, generateMoneyFlowInsights } from './services/moneyFlowService';
+import { calculateIchimoku } from './services/ichimokuService';
 import { analyzeReversal } from './services/reversalService';
 import { simulateGoldenCross } from './services/simulationService';
 import { calculateSmartSR, SRZone } from './services/smartSRService';
 import { generateScenario, ScenarioResult } from './services/scenarioService';
-import { getStockProfile, getGeminiNewsAnalysis } from './services/geminiService';
+import { getStockProfile, getGeminiNewsAnalysis, getElliottWaveAnalysis } from './services/geminiService';
 import { getStockData, saveStockData } from './services/storageService';
 import { getFlag, formatCurrency } from './utils/formatters';
 import { TRANSLATIONS } from './constants/translations';
@@ -52,6 +55,7 @@ import { StockData, ApiResponse, Transaction, PortfolioSummary } from './types';
 
 const INTERVALS = [
   { label: 'Hourly', value: '1h' },
+  { label: '90 Minutes', value: '90m' },
   { label: 'Daily', value: '1d' },
   { label: 'Weekly', value: '1wk' },
 ];
@@ -73,6 +77,10 @@ export default function App() {
   const [showEMA50, setShowEMA50] = useState(false);
   const [showRSI, setShowRSI] = useState(false);
   const [showMACD, setShowMACD] = useState(false);
+  const [showElliottWaves, setShowElliottWaves] = useState(false);
+  const [showVolumeSpikes, setShowVolumeSpikes] = useState(false);
+  const [showIchimoku, setShowIchimoku] = useState(false);
+  const [showMoneyFlow, setShowMoneyFlow] = useState(false);
   const [isInvertedY, setIsInvertedY] = useState(false);
   const [isSimulationMode, setIsSimulationMode] = useState(false);
   const [simulationRate, setSimulationRate] = useState(-1.5);
@@ -89,6 +97,10 @@ export default function App() {
   const [geminiLoading, setGeminiLoading] = useState(false);
   const [geminiError, setGeminiError] = useState<string | null>(null);
   const [geminiAnalysis, setGeminiAnalysis] = useState<any | null>(null);
+  const [elliottAnalysis, setElliottAnalysis] = useState<string | null>(null);
+  const [isElliottWaveAiEnabled, setIsElliottWaveAiEnabled] = useState(true);
+  const [showAiConfirmation, setShowAiConfirmation] = useState(false);
+  const [pendingElliottWaveData, setPendingElliottWaveData] = useState<{data: StockData, label: string} | null>(null);
   const [geminiTargetDate, setGeminiTargetDate] = useState<string>('');
   const [geminiUsage, setGeminiUsage] = useState<{ count: number; limit: number } | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -263,16 +275,59 @@ export default function App() {
     setGeminiLoading(true);
     setGeminiError(null);
     setGeminiAnalysis(null);
+    setElliottAnalysis(null); // Reset Elliott analysis
     setGeminiTargetDate(new Date(data.date).toISOString().split('T')[0]);
 
     try {
       const result = await getGeminiNewsAnalysis(symbol, new Date(data.date).toISOString().split('T')[0]);
       setGeminiAnalysis(result);
-      fetchGeminiUsage(); // Still fetch usage from backend if needed
+      fetchGeminiUsage(); 
     } catch (err: any) {
       setGeminiError(err.message);
     } finally {
       setGeminiLoading(false);
+    }
+  };
+
+  const handleElliottWaveAnalysis = (data: StockData, label: string) => {
+    if (!isElliottWaveAiEnabled) return;
+    setPendingElliottWaveData({ data, label });
+    setShowAiConfirmation(true);
+  };
+
+  const confirmElliottWaveAnalysis = async () => {
+    setShowAiConfirmation(false);
+    if (!pendingElliottWaveData) return;
+    
+    const { data, label } = pendingElliottWaveData;
+    setGeminiModalOpen(true);
+    setGeminiLoading(true);
+    setGeminiError(null);
+    setGeminiAnalysis(null); // Reset News analysis
+    setElliottAnalysis(null);
+    setGeminiTargetDate(new Date(data.date).toISOString().split('T')[0]);
+
+    try {
+      // Prepare context data (last 20 bars)
+      const idx = stockData?.data.findIndex(d => d.date === data.date) || -1;
+      let contextData = '';
+      if (idx !== -1 && stockData?.data) {
+        const start = Math.max(0, idx - 20);
+        const end = Math.min(stockData.data.length - 1, idx + 5);
+        const slice = stockData.data.slice(start, end + 1);
+        contextData = slice.map(d => 
+          `${d.date}: O=${d.open}, H=${d.high}, L=${d.low}, C=${d.close}`
+        ).join('\n');
+      }
+
+      const result = await getElliottWaveAnalysis(symbol, label, contextData);
+      setElliottAnalysis(result);
+      fetchGeminiUsage();
+    } catch (err: any) {
+      setGeminiError(err.message);
+    } finally {
+      setGeminiLoading(false);
+      setPendingElliottWaveData(null);
     }
   };
 
@@ -646,8 +701,20 @@ export default function App() {
     data = calculateEMA(data, 135, 'ema135');
     data = calculateRSI(data);
     data = calculateMACD(data);
+    
+    // Always calculate Ichimoku if we want to show it, or just calculate it always?
+    // It adds 26 bars to the end. If we do it always, the chart x-axis will always extend.
+    // Let's only do it if showIchimoku is true.
+    if (showIchimoku) {
+      data = calculateIchimoku(data);
+    }
+    
+    if (showMoneyFlow) {
+      data = calculateMoneyFlow(data);
+    }
+
     return data;
-  }, [stockData, isSimulationMode, simulationRate, interval]);
+  }, [stockData, isSimulationMode, simulationRate, interval, showIchimoku, showMoneyFlow]);
 
   const handleScenarioToggle = () => {
     const nextMode = !isScenarioMode;
@@ -766,6 +833,11 @@ export default function App() {
   const simulationResult = useMemo(() => {
     return simulateGoldenCross(processedData, interval);
   }, [processedData, interval]);
+
+  const moneyFlowInsights = useMemo(() => {
+    if (!showMoneyFlow || !processedData || processedData.length === 0) return { insights: [], summary: null };
+    return generateMoneyFlowInsights(processedData);
+  }, [processedData, showMoneyFlow]);
 
   // Fetch market prices for portfolio
   useEffect(() => {
@@ -1214,6 +1286,14 @@ export default function App() {
                   setShowRSI={setShowRSI}
                   showMACD={showMACD}
                   setShowMACD={setShowMACD}
+                  showElliottWaves={showElliottWaves}
+                  setShowElliottWaves={setShowElliottWaves}
+                  showVolumeSpikes={showVolumeSpikes}
+                  setShowVolumeSpikes={setShowVolumeSpikes}
+                  showIchimoku={showIchimoku}
+                  setShowIchimoku={setShowIchimoku}
+                  showMoneyFlow={showMoneyFlow}
+                  setShowMoneyFlow={setShowMoneyFlow}
                   isInvertedY={isInvertedY}
                   setIsInvertedY={setIsInvertedY}
                   isLogScale={isLogScale}
@@ -1265,6 +1345,14 @@ export default function App() {
                       setShowRSI={setShowRSI}
                       showMACD={showMACD}
                       setShowMACD={setShowMACD}
+                      showElliottWaves={showElliottWaves}
+                      setShowElliottWaves={setShowElliottWaves}
+                      showVolumeSpikes={showVolumeSpikes}
+                      setShowVolumeSpikes={setShowVolumeSpikes}
+                      showIchimoku={showIchimoku}
+                      setShowIchimoku={setShowIchimoku}
+                      showMoneyFlow={showMoneyFlow}
+                      setShowMoneyFlow={setShowMoneyFlow}
                       isInvertedY={isInvertedY}
                       setIsInvertedY={setIsInvertedY}
                       isLogScale={isLogScale}
@@ -1315,6 +1403,10 @@ export default function App() {
                     showEMA50={showEMA50}
                     showRSI={showRSI}
                     showMACD={showMACD}
+                    showElliottWaves={showElliottWaves}
+                    showVolumeSpikes={showVolumeSpikes}
+                    showIchimoku={showIchimoku}
+                    showMoneyFlow={showMoneyFlow}
                     isInvertedY={isInvertedY}
                     chartType={chartType}
                     onHover={setHoveredData}
@@ -1322,6 +1414,7 @@ export default function App() {
                       setContextMenu({ x, y, data });
                       fetchGeminiUsage();
                     }}
+                    onElliottWaveClick={handleElliottWaveAnalysis}
                     resetTrigger={resetTrigger}
                     isLogScale={isLogScale}
                     isSimulationMode={isSimulationMode}
@@ -1389,6 +1482,130 @@ export default function App() {
                   )}
                 </div>
               </div>
+
+              {showMoneyFlow && (
+                <div className="space-y-6">
+                  {/* Trade Setup Summary */}
+                  {moneyFlowInsights.summary && (
+                    <div className={cn(
+                      "rounded-2xl border p-6 transition-colors duration-300 animate-in fade-in slide-in-from-top-4",
+                      theme === 'dark' ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200"
+                    )}>
+                      <div className="flex items-center gap-3 mb-5">
+                        <div className="p-2 rounded-lg bg-blue-500/10">
+                          <Activity className="w-5 h-5 text-blue-500" />
+                        </div>
+                        <div>
+                          <h3 className={cn("text-xs font-black uppercase tracking-[0.2em]", theme === 'dark' ? "text-zinc-400" : "text-zinc-500")}>
+                            Trade Setup Summary
+                          </h3>
+                          <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-0.5">[System Note]</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className={cn("p-4 rounded-xl border", theme === 'dark' ? "bg-zinc-950 border-zinc-800" : "bg-zinc-50 border-zinc-200")}>
+                          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Current Status</p>
+                          <p className={cn("text-sm font-black", theme === 'dark' ? "text-zinc-100" : "text-zinc-900")}>
+                            {moneyFlowInsights.summary.currentStatus}
+                          </p>
+                        </div>
+                        <div className={cn("p-4 rounded-xl border", theme === 'dark' ? "bg-zinc-950 border-zinc-800" : "bg-zinc-50 border-zinc-200")}>
+                          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Smart Money Action</p>
+                          <p className={cn("text-sm font-black", theme === 'dark' ? "text-zinc-100" : "text-zinc-900")}>
+                            {moneyFlowInsights.summary.smartMoneyAction}
+                          </p>
+                        </div>
+                        <div className={cn("p-4 rounded-xl border", 
+                          moneyFlowInsights.summary.actionBias.includes('Accumulate') 
+                            ? "bg-emerald-500/10 border-emerald-500/20" 
+                            : (theme === 'dark' ? "bg-zinc-950 border-zinc-800" : "bg-zinc-50 border-zinc-200")
+                        )}>
+                          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Action Bias</p>
+                          <p className={cn("text-sm font-black", 
+                            moneyFlowInsights.summary.actionBias.includes('Accumulate') ? "text-emerald-500" : (theme === 'dark' ? "text-zinc-100" : "text-zinc-900")
+                          )}>
+                            {moneyFlowInsights.summary.actionBias}
+                          </p>
+                        </div>
+                      </div>
+
+                      {moneyFlowInsights.insights.length > 0 && (
+                        <div className="mt-6 space-y-3 border-t border-zinc-800/50 pt-5">
+                          {moneyFlowInsights.insights.map((insight, idx) => (
+                            <div key={idx} className="flex gap-3 items-start">
+                              <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                              <p className={cn("text-sm font-medium leading-relaxed", theme === 'dark' ? "text-zinc-300" : "text-zinc-700")}>
+                                {insight}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Legend Box */}
+                  <div className={cn(
+                    "rounded-2xl border p-6 transition-colors duration-300",
+                    theme === 'dark' ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200"
+                  )}>
+                    <div className="flex items-center gap-2 mb-4">
+                      <HelpCircle className="w-4 h-4 text-zinc-500" />
+                      <h3 className={cn("text-[10px] font-black uppercase tracking-[0.2em]", theme === 'dark' ? "text-zinc-400" : "text-zinc-500")}>
+                        คำอธิบายระบบ Money Flow & Climax
+                      </h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-500 text-[10px] font-black border border-rose-500/20">CLIMAX</span>
+                          <span className={cn("text-sm font-black uppercase tracking-tight", theme === 'dark' ? "text-zinc-200" : "text-zinc-800")}>Selling Climax</span>
+                        </div>
+                        <p className={cn("text-xs leading-relaxed", theme === 'dark' ? "text-zinc-400" : "text-zinc-600")}>
+                          <span className="font-bold text-rose-500/80">ระบบคำนวณ:</span> Vol &gt; 2x Avg และราคาลง &gt; 20% จากจุดสูงสุด มักเป็นสัญญาณ Panic Sell ที่รุนแรงจนแรงขายเริ่มหมด
+                        </p>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 text-[10px] font-black border border-emerald-500/20">ABSORB</span>
+                          <span className={cn("text-sm font-black uppercase tracking-tight", theme === 'dark' ? "text-zinc-200" : "text-zinc-800")}>Absorption</span>
+                        </div>
+                        <p className={cn("text-xs leading-relaxed", theme === 'dark' ? "text-zinc-400" : "text-zinc-600")}>
+                          <span className="font-bold text-emerald-500/80">ระบบคำนวณ:</span> Vol &gt; 1.5x Avg และฝั่งซื้อ &gt; ฝั่งขาย บ่งบอกว่า "เงินก้อนใหญ่" กำลังรับซื้อของในปริมาณมาก
+                        </p>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded bg-rose-600/10 text-rose-600 text-[10px] font-black border border-rose-600/20">PANIC</span>
+                          <span className={cn("text-sm font-black uppercase tracking-tight", theme === 'dark' ? "text-zinc-200" : "text-zinc-800")}>Panic Selling</span>
+                        </div>
+                        <p className={cn("text-xs leading-relaxed", theme === 'dark' ? "text-zinc-400" : "text-zinc-600")}>
+                          <span className="font-bold text-rose-600/80">ระบบคำนวณ:</span> Vol แดงสูงปรี๊ด (&gt; 1.5x Avg) พร้อมราคาทำ New Low ในรอบ 20 แท่ง เป็นจุดที่คนส่วนใหญ่ยอมแพ้
+                        </p>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 text-[10px] font-black border border-amber-500/20">EXHAUST</span>
+                          <span className={cn("text-sm font-black uppercase tracking-tight", theme === 'dark' ? "text-zinc-200" : "text-zinc-800")}>Exhaustion</span>
+                        </div>
+                        <p className={cn("text-xs leading-relaxed", theme === 'dark' ? "text-zinc-400" : "text-zinc-600")}>
+                          <span className="font-bold text-amber-500/80">ระบบคำนวณ:</span> วอลุ่มแห้งสนิท (&lt; 0.5x Avg) หลังจากราคาลงมาลึก (&gt; 15% Drawdown) แปลว่าคนขายหมดมือแล้ว
+                        </p>
+                      </div>
+                      <div className="md:col-span-2 pt-4 border-t border-zinc-800/50">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-4 h-0.5 bg-blue-500 opacity-60" />
+                          <span className={cn("text-[10px] font-black uppercase tracking-widest", theme === 'dark' ? "text-blue-400" : "text-blue-600")}>% Drawdown Line (Blue Line)</span>
+                        </div>
+                        <p className={cn("text-xs leading-relaxed", theme === 'dark' ? "text-zinc-400" : "text-zinc-600")}>
+                          เส้นแสดงการย่อตัวจากจุดสูงสุดสะสม ใช้หาจุด "Discount" หรือ Margin of Safety สำหรับหุ้นพื้นฐานดี
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <WhatIfBox 
                 result={simulationResult}
@@ -1803,6 +2020,7 @@ export default function App() {
         loading={geminiLoading}
         error={geminiError}
         analysis={geminiAnalysis}
+        elliottAnalysis={elliottAnalysis}
         theme={theme}
       />
 
@@ -1826,7 +2044,52 @@ export default function App() {
         onToggleRecentStocks={() => setShowRecentStocks(!showRecentStocks)}
         showNotebook={showNotebook}
         onToggleNotebook={() => setShowNotebook(!showNotebook)}
+        isElliottWaveAiEnabled={isElliottWaveAiEnabled}
+        onToggleElliottWaveAi={() => setIsElliottWaveAiEnabled(!isElliottWaveAiEnabled)}
       />
+
+      {/* AI Confirmation Modal */}
+      {showAiConfirmation && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 sm:p-6">
+          <div 
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm" 
+            onClick={() => setShowAiConfirmation(false)}
+          />
+          <div className={cn(
+            "relative w-full max-w-sm rounded-3xl border shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200",
+            theme === 'dark' ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200"
+          )}>
+            <div className="p-6 space-y-4">
+              <div className="flex items-center gap-3 text-amber-500">
+                <AlertCircle className="w-8 h-8" />
+                <h3 className={cn("text-lg font-black", theme === 'dark' ? "text-white" : "text-zinc-900")}>
+                  Confirm AI Analysis
+                </h3>
+              </div>
+              <p className={cn("text-sm leading-relaxed", theme === 'dark' ? "text-zinc-400" : "text-zinc-600")}>
+                This action will use your AI quota. Are you sure you want to proceed with the Elliott Wave analysis?
+              </p>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowAiConfirmation(false)}
+                  className={cn(
+                    "flex-1 py-3 rounded-xl font-bold text-sm transition-colors",
+                    theme === 'dark' ? "bg-zinc-800 text-zinc-400 hover:bg-zinc-700" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                  )}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmElliottWaveAnalysis}
+                  className="flex-1 py-3 rounded-xl font-bold text-sm bg-amber-500 text-white hover:bg-amber-600 transition-colors shadow-lg shadow-amber-500/20"
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ReversalDashboard 
         isOpen={isDashboardOpen} 

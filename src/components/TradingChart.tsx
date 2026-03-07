@@ -2,7 +2,9 @@ import React, { useRef, useEffect, useMemo, useImperativeHandle, forwardRef } fr
 import * as d3 from 'd3';
 import { format } from 'date-fns';
 import { StockData } from '../types';
-import { detectDivergences, Divergence } from '../services/divergenceService';
+import { detectDivergences, detectMACDDivergences, Divergence } from '../services/divergenceService';
+import { detectElliottWaves } from '../services/elliottWaveService';
+import { detectVolumeSpikes } from '../services/volumeService';
 import { cn } from '../utils/cn';
 import { Download, Play, Pause, TrendingUp, HelpCircle, Ghost, AlertTriangle, Target, X } from 'lucide-react';
 import { domToPng } from 'modern-screenshot';
@@ -20,10 +22,15 @@ interface ChartProps {
   showEMA50?: boolean;
   showRSI?: boolean;
   showMACD?: boolean;
+  showElliottWaves?: boolean;
+  showVolumeSpikes?: boolean;
+  showIchimoku?: boolean;
+  showMoneyFlow?: boolean;
   isInvertedY?: boolean;
   chartType: 'line' | 'candlestick';
   onHover: (data: StockData | null) => void;
   onRightClick: (data: StockData, x: number, y: number) => void;
+  onElliottWaveClick?: (data: StockData, label: string) => void;
   resetTrigger: number;
   isSimulationMode?: boolean;
   isSmartSRMode?: boolean;
@@ -57,10 +64,15 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
   showEMA50,
   showRSI,
   showMACD,
+  showElliottWaves,
+  showVolumeSpikes,
+  showIchimoku,
+  showMoneyFlow,
   isInvertedY,
   chartType,
   onHover,
   onRightClick,
+  onElliottWaveClick,
   resetTrigger,
   isSimulationMode,
   isSmartSRMode,
@@ -88,6 +100,31 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
     y: number;
     containerWidth: number;
   } | null>(null);
+
+  const rsiDivergences = useMemo(() => detectDivergences(data, 60), [data]);
+  const macdDivergences = useMemo(() => detectMACDDivergences(data, 60), [data]);
+  
+  const elliottWaveData = useMemo(() => {
+    if (!showElliottWaves) return data;
+    return detectElliottWaves(data);
+  }, [data, showElliottWaves]);
+
+  const volumeSpikeData = useMemo(() => {
+    if (!showVolumeSpikes) return data;
+    return detectVolumeSpikes(data);
+  }, [data, showVolumeSpikes]);
+
+  // Merge data with indicators
+  const processedData = useMemo(() => {
+    let d = [...data];
+    if (showElliottWaves) {
+      d = detectElliottWaves(d);
+    }
+    if (showVolumeSpikes) {
+      d = detectVolumeSpikes(d);
+    }
+    return d;
+  }, [data, showElliottWaves, showVolumeSpikes]);
 
   // Draggable Tooltip State
   const [tooltipPos, setTooltipPos] = React.useState({ x: 0, y: 0 });
@@ -152,7 +189,8 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
     volume: 80,
     rsi: 80,
     macd: 80,
-    obv: 80
+    obv: 80,
+    moneyFlow: 100
   });
 
   // Reset pane heights when fullscreen changes
@@ -162,7 +200,8 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
       volume: defaultHeight,
       rsi: defaultHeight,
       macd: defaultHeight,
-      obv: defaultHeight
+      obv: defaultHeight,
+      moneyFlow: isFullscreen ? 180 : 100
     });
   }, [isFullscreen]);
 
@@ -303,6 +342,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
     if (showVolume) mainAreaHeight -= (paneHeights.volume + gap);
     if (showRSI) mainAreaHeight -= (paneHeights.rsi + gap);
     if (showMACD) mainAreaHeight -= (paneHeights.macd + gap);
+    if (showMoneyFlow) mainAreaHeight -= (paneHeights.moneyFlow + gap);
 
     svg.attr('width', width).attr('height', height);
     svg.selectAll('*').remove();
@@ -321,6 +361,16 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
     rsiGradient.append('stop').attr('offset', '70%').attr('stop-color', '#f59e0b');
     rsiGradient.append('stop').attr('offset', '70%').attr('stop-color', '#10b981'); // Oversold (Bottom)
     rsiGradient.append('stop').attr('offset', '100%').attr('stop-color', '#10b981');
+
+    // Spike Glow Gradient
+    const spikeGlow = defs.append('radialGradient')
+      .attr('id', 'spike-glow')
+      .attr('cx', '50%')
+      .attr('cy', '50%')
+      .attr('r', '50%');
+    
+    spikeGlow.append('stop').attr('offset', '0%').attr('stop-color', '#fbbf24').attr('stop-opacity', 0.6);
+    spikeGlow.append('stop').attr('offset', '100%').attr('stop-color', '#fbbf24').attr('stop-opacity', 0);
 
     // Scales
     const xMax = isScenarioMode && scenarioResult ? data.length + scenarioResult.candles.length + 5 : data.length - 1;
@@ -351,8 +401,25 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
       
       const visible = data.filter((_, i) => i >= xStart && i <= xEnd);
       if (visible.length > 0) {
-        const min = d3.min(visible, (d: StockData) => d.low) ?? 0;
-        const max = d3.max(visible, (d: StockData) => d.high) ?? 0;
+        let min = d3.min(visible, (d: StockData) => d.low) ?? 0;
+        let max = d3.max(visible, (d: StockData) => d.high) ?? 0;
+
+        // Include Ichimoku values in domain if enabled
+        if (showIchimoku) {
+          const ichimokuValues = visible.flatMap(d => [
+            d.tenkanSen, 
+            d.kijunSen, 
+            d.senkouSpanA, 
+            d.senkouSpanB, 
+            d.chikouSpan
+          ].filter(v => v !== undefined && !isNaN(v)) as number[]);
+          
+          if (ichimokuValues.length > 0) {
+            min = Math.min(min, ...ichimokuValues);
+            max = Math.max(max, ...ichimokuValues);
+          }
+        }
+
         const padding = Math.max((max - min) * 0.15, min * 0.001);
         let finalMin = min - padding;
         let finalMax = max + padding;
@@ -437,23 +504,74 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
     const draw = (xScale: d3.ScaleLinear<number, number>, yScale: d3.ScaleLinear<number, number>) => {
       chartContent.selectAll('*').remove();
       
-      const [xStart, xEnd] = xScale.domain();
-      const selectedIdx = isSmartSRMode && selectedSRDate ? data.findIndex(d => d.date === selectedSRDate) : -1;
-      const maxIdx = selectedIdx !== -1 ? selectedIdx + revealIndex : data.length - 1;
+      // Use processedData for drawing
+      const drawData = processedData;
 
-      const visibleData: StockData[] = data.filter((d, i) => {
+      const [xStart, xEnd] = xScale.domain();
+      const selectedIdx = isSmartSRMode && selectedSRDate ? drawData.findIndex(d => d.date === selectedSRDate) : -1;
+      const maxIdx = selectedIdx !== -1 ? selectedIdx + revealIndex : drawData.length - 1;
+
+      const visibleData: StockData[] = drawData.filter((d, i) => {
         if (i < xStart - 5 || i > xEnd + 5) return false;
         if (isSmartSRMode && selectedSRDate && i > maxIdx) return false;
         return true;
       });
 
+      const indicatorData = drawData.filter((d, i) => {
+        if (i < xStart - 50 || i > xEnd + 50) return false;
+        if (i > maxIdx) return false;
+        return true;
+      });
+
+      // Elliott Wave Lines
+      if (showElliottWaves) {
+        const waveGroups = new Map<string, { index: number, data: StockData }[]>();
+        drawData.forEach((d, i) => {
+          if (d.elliottWaveId) {
+            if (!waveGroups.has(d.elliottWaveId)) {
+              waveGroups.set(d.elliottWaveId, []);
+            }
+            waveGroups.get(d.elliottWaveId)!.push({ index: i, data: d });
+          }
+        });
+
+        waveGroups.forEach((points) => {
+           points.sort((a, b) => a.index - b.index);
+           
+           const getPrice = (d: StockData) => {
+              const label = d.elliottWaveLabel || '';
+              if (['1', '3', '5', '5?', 'B'].includes(label)) return d.high;
+              if (['(0)', '2', '4', 'A', 'C'].includes(label)) return d.low;
+              return d.close;
+           };
+
+           const lineGenerator = d3.line<{ index: number, data: StockData }>()
+             .x(p => xScale(p.index))
+             .y(p => yScale(getPrice(p.data)));
+             
+           const type = points[0].data.elliottWaveType;
+           const isImpulse = type === 'impulse';
+           const color = isImpulse ? '#10b981' : '#ef4444';
+           
+           chartContent.append('path')
+             .datum(points)
+             .attr('d', lineGenerator)
+             .attr('fill', 'none')
+             .attr('stroke', color)
+             .attr('stroke-width', 2)
+             .attr('stroke-dasharray', isImpulse ? 'none' : '4,4')
+             .attr('opacity', 0.6);
+        });
+      }
+
       if (chartType === 'line') {
         // Multi-colored line segments
-        for (let i = 1; i < data.length; i++) {
-          const d1 = data[i - 1];
-          const d2 = data[i];
+        for (let i = 1; i < drawData.length; i++) {
+          const d1 = drawData[i - 1];
+          const d2 = drawData[i];
           if (i < xStart - 1 || i > xEnd + 1) continue;
           if (isSmartSRMode && selectedSRDate && i > maxIdx) continue;
+          if (isNaN(d1.close) || isNaN(d2.close)) continue;
 
           chartContent.append('line')
             .attr('x1', xScale(i - 1))
@@ -469,9 +587,53 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
         // Candlesticks
         const candleWidth = Math.max(1, (width / (xEnd - xStart)) * 0.7);
         visibleData.forEach(d => {
-          const idx = data.indexOf(d);
+          if (isNaN(d.open) || isNaN(d.close)) return;
+          const idx = drawData.indexOf(d);
           const color = d.close >= d.open ? '#10b981' : '#ef4444';
           
+          // Volume Spike Effect (Old Money Tracker)
+          if (showVolumeSpikes && d.isVolumeSpike) {
+             // Glow effect
+             chartContent.append('rect')
+               .attr('x', xScale(idx) - candleWidth)
+               .attr('y', yScale(d.high) - 10)
+               .attr('width', candleWidth * 2)
+               .attr('height', Math.abs(yScale(d.low) - yScale(d.high)) + 20)
+               .attr('fill', 'url(#spike-glow)') // We need to define this gradient
+               .attr('opacity', 0.5)
+               .attr('filter', 'blur(4px)');
+             
+             // Sparkle/Star icon above high
+             chartContent.append('text')
+               .attr('x', xScale(idx))
+               .attr('y', yScale(d.high) - 15)
+               .attr('text-anchor', 'middle')
+               .attr('class', 'text-[10px] fill-amber-400 animate-pulse')
+               .text('✨');
+          }
+
+          // Order Block Visualization
+          if (showVolumeSpikes && d.isOrderBlock) {
+             const obColor = d.close > d.open ? '#10b981' : '#ef4444'; // Bullish or Bearish OB
+             // Extend rectangle to the right
+             chartContent.append('rect')
+               .attr('x', xScale(idx))
+               .attr('y', yScale(d.high))
+               .attr('width', width - xScale(idx)) // Extend to end of chart
+               .attr('height', Math.abs(yScale(d.high) - yScale(d.low)))
+               .attr('fill', obColor)
+               .attr('opacity', 0.1)
+               .attr('stroke', obColor)
+               .attr('stroke-width', 0.5)
+               .attr('stroke-dasharray', '2,2');
+             
+             chartContent.append('text')
+               .attr('x', xScale(idx) + 5)
+               .attr('y', yScale(d.high) - 5)
+               .attr('class', 'text-[8px] font-bold fill-zinc-500 opacity-50')
+               .text('OB');
+          }
+
           chartContent.append('line')
             .attr('x1', xScale(idx))
             .attr('x2', xScale(idx))
@@ -489,6 +651,89 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
             .attr('opacity', d.isSimulated ? 0.5 : 1)
             .attr('stroke', d.isSimulated ? '#f43f5e' : 'none')
             .attr('stroke-width', d.isSimulated ? 1 : 0);
+            
+          // Elliott Wave Labels
+          if (showElliottWaves && d.elliottWaveLabel) {
+            const isTop = d.elliottWaveLabel.match(/[135B]/) || (d.elliottWaveLabel === 'C' && d.close > d.open); // Heuristic for placement
+            const yPos = isTop ? yScale(d.high) - 15 : yScale(d.low) + 25;
+            
+            const isImpulse = d.elliottWaveType === 'impulse';
+            const strokeColor = isDark 
+              ? (isImpulse ? '#10b981' : '#ef4444') 
+              : (isImpulse ? '#059669' : '#dc2626');
+            const fillColor = isDark 
+              ? (isImpulse ? '#064e3b' : '#7f1d1d') 
+              : (isImpulse ? '#d1fae5' : '#fee2e2');
+            const textColor = isDark 
+              ? (isImpulse ? '#34d399' : '#f87171') 
+              : (isImpulse ? '#059669' : '#dc2626');
+
+            const group = chartContent.append('g')
+              .attr('class', 'cursor-pointer hover:opacity-80 transition-opacity')
+              .on('click', (event) => {
+                event.stopPropagation();
+                if (onElliottWaveClick && d.elliottWaveLabel) {
+                  onElliottWaveClick(d, d.elliottWaveLabel);
+                }
+              });
+
+             // Circle background for label
+             group.append('circle')
+               .attr('cx', xScale(idx))
+               .attr('cy', yPos - 4)
+               .attr('r', 8)
+               .attr('fill', fillColor)
+               .attr('opacity', 0.9)
+               .attr('stroke', strokeColor)
+               .attr('stroke-width', 1);
+
+            group.append('text')
+              .attr('x', xScale(idx))
+              .attr('y', yPos)
+              .attr('text-anchor', 'middle')
+              .attr('class', 'text-[10px] font-black font-mono select-none')
+              .attr('fill', textColor)
+              .text(d.elliottWaveLabel);
+
+            if (d.elliottWaveConfidence !== undefined) {
+               const confY = isTop ? yPos - 12 : yPos + 12;
+               group.append('text')
+                 .attr('x', xScale(idx))
+                 .attr('y', confY)
+                 .attr('text-anchor', 'middle')
+                 .attr('class', 'text-[6px] font-mono select-none opacity-70')
+                 .attr('fill', textColor)
+                 .text(`${d.elliottWaveConfidence}%`);
+            }
+          }
+
+          // Projection Line
+          if (showElliottWaves && d.elliottWaveProjection) {
+            const proj = d.elliottWaveProjection;
+            const startX = xScale(idx);
+            const startY = yScale(d.close);
+            const endX = xScale(idx + 20); // Project 20 bars ahead
+            const endY = yScale(proj.targetPrice);
+
+            // Dashed Projection Line
+            chartContent.append('line')
+              .attr('x1', startX)
+              .attr('y1', startY)
+              .attr('x2', endX)
+              .attr('y2', endY)
+              .attr('stroke', isDark ? '#a855f7' : '#9333ea') // Purple for projection
+              .attr('stroke-width', 2)
+              .attr('stroke-dasharray', '4,4')
+              .attr('opacity', 0.8);
+
+            // Target Label
+            chartContent.append('text')
+              .attr('x', endX + 5)
+              .attr('y', endY)
+              .attr('dominant-baseline', 'middle')
+              .attr('class', 'text-[10px] font-bold font-mono fill-purple-500')
+              .text(`${proj.waveLabel}: ${proj.targetPrice.toFixed(2)}`);
+          }
         });
       }
 
@@ -499,7 +744,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
           .curve(d3.curveMonotoneX);
 
         chartContent.append('path')
-          .datum(data.filter((_, i) => i <= maxIdx))
+          .datum(indicatorData)
           .attr('fill', 'none')
           .attr('stroke', '#f59e0b')
           .attr('stroke-width', 2)
@@ -514,7 +759,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
           .curve(d3.curveMonotoneX);
 
         chartContent.append('path')
-          .datum(data.filter((d, i) => i <= maxIdx && d.ema20))
+          .datum(indicatorData.filter(d => d.ema20))
           .attr('fill', 'none')
           .attr('stroke', '#3b82f6')
           .attr('stroke-width', 1.5)
@@ -528,7 +773,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
           .curve(d3.curveMonotoneX);
 
         chartContent.append('path')
-          .datum(data.filter((d, i) => i <= maxIdx && d.ema50))
+          .datum(indicatorData.filter(d => d.ema50))
           .attr('fill', 'none')
           .attr('stroke', '#f472b6')
           .attr('stroke-width', 1.5)
@@ -543,7 +788,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
           .curve(d3.curveMonotoneX);
 
         chartContent.append('path')
-          .datum(data.filter((_, i) => i <= maxIdx && d3.min(data, d => d.ema50) !== 0))
+          .datum(indicatorData.filter(d => d3.min(data, d => d.ema50) !== 0))
           .attr('fill', 'none')
           .attr('stroke', '#3b82f6')
           .attr('stroke-width', 1.5)
@@ -556,7 +801,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
           .curve(d3.curveMonotoneX);
 
         chartContent.append('path')
-          .datum(data.filter((_, i) => i <= maxIdx && d3.min(data, d => d.ema135) !== 0))
+          .datum(indicatorData.filter(d => d3.min(data, d => d.ema135) !== 0))
           .attr('fill', 'none')
           .attr('stroke', '#f472b6')
           .attr('stroke-width', 1.5)
@@ -590,6 +835,97 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
             }
           }
         }
+      }
+
+      // Ichimoku Cloud
+      if (showIchimoku) {
+        // Green Cloud (Span A > Span B)
+        chartContent.append('path')
+          .datum(data)
+          .attr('fill', 'rgba(34, 197, 94, 0.15)')
+          .attr('d', d3.area<StockData>()
+            .defined(d => d.senkouSpanA !== undefined && d.senkouSpanB !== undefined && d.senkouSpanA >= d.senkouSpanB)
+            .x((d, i) => xScale(i))
+            .y0(d => yScale(d.senkouSpanA!))
+            .y1(d => yScale(d.senkouSpanB!))
+            .curve(d3.curveLinear)
+          );
+
+        // Red Cloud (Span A < Span B)
+        chartContent.append('path')
+          .datum(data)
+          .attr('fill', 'rgba(239, 68, 68, 0.15)')
+          .attr('d', d3.area<StockData>()
+            .defined(d => d.senkouSpanA !== undefined && d.senkouSpanB !== undefined && d.senkouSpanA < d.senkouSpanB)
+            .x((d, i) => xScale(i))
+            .y0(d => yScale(d.senkouSpanA!))
+            .y1(d => yScale(d.senkouSpanB!))
+            .curve(d3.curveLinear)
+          );
+          
+        // Tenkan-sen (Red)
+        chartContent.append('path')
+          .datum(data)
+          .attr('fill', 'none')
+          .attr('stroke', '#ef4444')
+          .attr('stroke-width', 1.5)
+          .attr('d', d3.line<StockData>()
+            .defined(d => d.tenkanSen !== undefined)
+            .x((d, i) => xScale(i))
+            .y(d => yScale(d.tenkanSen!))
+          );
+
+        // Kijun-sen (Blue)
+        chartContent.append('path')
+          .datum(data)
+          .attr('fill', 'none')
+          .attr('stroke', '#3b82f6')
+          .attr('stroke-width', 1.5)
+          .attr('d', d3.line<StockData>()
+            .defined(d => d.kijunSen !== undefined)
+            .x((d, i) => xScale(i))
+            .y(d => yScale(d.kijunSen!))
+          );
+
+        // Chikou Span (Green)
+        chartContent.append('path')
+          .datum(data)
+          .attr('fill', 'none')
+          .attr('stroke', '#10b981')
+          .attr('stroke-width', 1.5)
+          .attr('d', d3.line<StockData>()
+            .defined(d => d.chikouSpan !== undefined)
+            .x((d, i) => xScale(i))
+            .y(d => yScale(d.chikouSpan!))
+          );
+          
+        // Span A (Greenish dashed)
+        chartContent.append('path')
+          .datum(data)
+          .attr('fill', 'none')
+          .attr('stroke', '#22c55e')
+          .attr('stroke-width', 1)
+          .attr('stroke-dasharray', '2,2')
+          .attr('opacity', 0.5)
+          .attr('d', d3.line<StockData>()
+            .defined(d => d.senkouSpanA !== undefined)
+            .x((d, i) => xScale(i))
+            .y(d => yScale(d.senkouSpanA!))
+          );
+
+        // Span B (Reddish dashed)
+        chartContent.append('path')
+          .datum(data)
+          .attr('fill', 'none')
+          .attr('stroke', '#ef4444')
+          .attr('stroke-width', 1)
+          .attr('stroke-dasharray', '2,2')
+          .attr('opacity', 0.5)
+          .attr('d', d3.line<StockData>()
+            .defined(d => d.senkouSpanB !== undefined)
+            .x((d, i) => xScale(i))
+            .y(d => yScale(d.senkouSpanB!))
+          );
       }
 
       // Sub-panes
@@ -700,22 +1036,22 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
           .curve(d3.curveMonotoneX);
 
         rsiPane.append('path')
-          .datum(data.filter((_, i) => i <= maxIdx))
+          .datum(indicatorData)
           .attr('fill', 'none')
           .attr('stroke', 'url(#rsi-gradient)')
           .attr('stroke-width', 1.5)
           .attr('d', rsiLine);
 
         // Divergence Detection (Version 3)
-        const divergences = detectDivergences(data, 60);
+        // const divergences = detectDivergences(data, 60); // Moved to useMemo
         
         // Filter divergences to only show those within the visible range (plus some buffer)
-        const visibleDivergences = divergences.filter(div => 
+        const visibleRSIDivergences = rsiDivergences.filter(div => 
           (div.start.index >= xStart - 10 && div.start.index <= xEnd + 10) || 
           (div.end.index >= xStart - 10 && div.end.index <= xEnd + 10)
         );
 
-        visibleDivergences.forEach(div => {
+        visibleRSIDivergences.forEach(div => {
           const isBullish = div.type.includes('Bullish');
           const color = isBullish ? '#10b981' : '#f43f5e';
           const isHidden = div.type.includes('Hidden');
@@ -724,9 +1060,9 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
           // Draw on RSI Pane
           rsiPane.append('line')
             .attr('x1', xScale(div.start.index))
-            .attr('y1', rsiY(div.start.rsi))
+            .attr('y1', rsiY(div.start.value))
             .attr('x2', xScale(div.end.index))
-            .attr('y2', rsiY(div.end.rsi))
+            .attr('y2', rsiY(div.end.value))
             .attr('stroke', color)
             .attr('stroke-width', 2)
             .attr('stroke-dasharray', dashArray)
@@ -825,7 +1161,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
           .curve(d3.curveMonotoneX);
 
         macdPane.append('path')
-          .datum(data.filter((_, i) => i <= maxIdx))
+          .datum(indicatorData)
           .attr('fill', 'none')
           .attr('stroke', '#3b82f6')
           .attr('stroke-width', 1.5)
@@ -838,7 +1174,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
           .curve(d3.curveMonotoneX);
 
         macdPane.append('path')
-          .datum(data.filter((_, i) => i <= maxIdx))
+          .datum(indicatorData)
           .attr('fill', 'none')
           .attr('stroke', '#f472b6')
           .attr('stroke-width', 1.5)
@@ -855,7 +1191,223 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
           .attr('class', 'text-[10px] font-bold fill-zinc-400')
           .text('MACD (12, 26, 9)');
 
+        // MACD Divergences
+        const visibleMACDDivergences = macdDivergences.filter(div => 
+          (div.start.index >= xStart - 10 && div.start.index <= xEnd + 10) || 
+          (div.end.index >= xStart - 10 && div.end.index <= xEnd + 10)
+        );
+
+        visibleMACDDivergences.forEach(div => {
+          const isBullish = div.type.includes('Bullish');
+          const color = isBullish ? '#10b981' : '#f43f5e';
+          const isHidden = div.type.includes('Hidden');
+          const dashArray = isHidden ? '2,2' : '4,2';
+          
+          // Draw on MACD Pane
+          macdPane.append('line')
+            .attr('x1', xScale(div.start.index))
+            .attr('y1', macdY(div.start.value))
+            .attr('x2', xScale(div.end.index))
+            .attr('y2', macdY(div.end.value))
+            .attr('stroke', color)
+            .attr('stroke-width', 2)
+            .attr('stroke-dasharray', dashArray)
+            .attr('opacity', 0.8);
+
+          // Draw on Main Chart
+          chartContent.append('line')
+            .attr('x1', xScale(div.start.index))
+            .attr('y1', yScale(div.start.price))
+            .attr('x2', xScale(div.end.index))
+            .attr('y2', yScale(div.end.price))
+            .attr('stroke', color)
+            .attr('stroke-width', 3)
+            .attr('stroke-dasharray', dashArray)
+            .attr('opacity', 0.8)
+            .attr('cursor', 'pointer')
+            .on('click', (event) => {
+              event.stopPropagation();
+              const [mx, my] = d3.pointer(event, containerRef.current);
+              const containerWidth = containerRef.current?.clientWidth || 800;
+              setActiveDivergence({ div, x: mx, y: my, containerWidth });
+            });
+
+          // Label on Main Chart
+          chartContent.append('text')
+            .attr('x', (xScale(div.start.index) + xScale(div.end.index)) / 2)
+            .attr('y', (yScale(div.start.price) + yScale(div.end.price)) / 2 + (isBullish ? 15 : -10))
+            .attr('text-anchor', 'middle')
+            .attr('class', `text-[9px] font-bold ${isBullish ? 'fill-emerald-500' : 'fill-rose-500'}`)
+            .style('pointer-events', 'none')
+            .text(`MACD ${div.type.replace(' Divergence', '')}`);
+        });
+
         currentY += paneHeights.macd + gap;
+      }
+
+      if (showMoneyFlow) {
+        const mfPane = g.append('g')
+          .attr('class', 'sub-pane')
+          .attr('transform', `translate(0, ${currentY})`);
+
+        // Background
+        mfPane.append('rect')
+          .attr('x', margin.left)
+          .attr('width', width - margin.left - margin.right)
+          .attr('height', paneHeights.moneyFlow)
+          .attr('fill', isDark ? '#18181b' : '#f4f4f5')
+          .attr('opacity', 0.5);
+
+        // Scales
+        const maxVol = d3.max(visibleData, d => d.totalDollarVolume || 0) || 0;
+        const mfY = d3.scaleLinear()
+          .domain([0, maxVol])
+          .range([paneHeights.moneyFlow, 0]);
+
+        // Draw Bars
+        visibleData.forEach(d => {
+          const idx = drawData.indexOf(d);
+          const xPos = xScale(idx);
+          const barWidth = Math.max(1, (width / (xEnd - xStart)) * 0.7);
+          
+          if (d.buyDollarVolume !== undefined && d.sellDollarVolume !== undefined && d.totalDollarVolume !== undefined) {
+             const buyHeight = paneHeights.moneyFlow - mfY(d.buyDollarVolume);
+             const sellHeight = mfY(d.buyDollarVolume) - mfY(d.totalDollarVolume);
+             
+             // Buy Bar
+             mfPane.append('rect')
+               .attr('x', xPos - barWidth / 2)
+               .attr('y', mfY(d.buyDollarVolume))
+               .attr('width', barWidth)
+               .attr('height', buyHeight)
+               .attr('fill', '#10b981')
+               .attr('opacity', 0.8);
+
+             // Sell Bar
+             mfPane.append('rect')
+               .attr('x', xPos - barWidth / 2)
+               .attr('y', mfY(d.totalDollarVolume))
+               .attr('width', barWidth)
+               .attr('height', sellHeight)
+               .attr('fill', '#ef4444')
+               .attr('opacity', 0.8);
+          }
+          
+          // Climax Markers
+          if (d.isSellingClimax) {
+             mfPane.append('text')
+               .attr('x', xPos)
+               .attr('y', mfY(d.totalDollarVolume || 0) - 5)
+               .attr('text-anchor', 'middle')
+               .attr('class', 'text-[8px] font-black fill-rose-500 animate-pulse')
+               .text('CLIMAX');
+          }
+          
+          if (d.isAbsorption) {
+             mfPane.append('text')
+               .attr('x', xPos)
+               .attr('y', mfY(d.totalDollarVolume || 0) - 5)
+               .attr('text-anchor', 'middle')
+               .attr('class', 'text-[8px] font-black fill-emerald-500 animate-pulse')
+               .text('ABSORB');
+          }
+
+          if (d.isPanic) {
+             mfPane.append('text')
+               .attr('x', xPos)
+               .attr('y', mfY(d.totalDollarVolume || 0) - 5)
+               .attr('text-anchor', 'middle')
+               .attr('class', 'text-[8px] font-black fill-rose-600 animate-bounce')
+               .text('PANIC');
+          }
+
+          if (d.isExhaustion) {
+             mfPane.append('text')
+               .attr('x', xPos)
+               .attr('y', mfY(d.totalDollarVolume || 0) - 5)
+               .attr('text-anchor', 'middle')
+               .attr('class', 'text-[8px] font-black fill-amber-500 animate-pulse')
+               .text('EXHAUST');
+          }
+        });
+
+        // Drawdown Scale (Secondary)
+        const ddY = d3.scaleLinear()
+          .domain([-100, 0])
+          .range([paneHeights.moneyFlow, 0]);
+
+        // Calculate Historical Average Drawdown for the visible data
+        const allDrawdowns = drawData.map(d => d.drawdownPct || 0).filter(d => d < 0);
+        const avgDD = allDrawdowns.length > 0 ? d3.mean(allDrawdowns) || -15 : -15;
+
+        // Golden Discount Line (Dashed)
+        mfPane.append('line')
+          .attr('x1', margin.left)
+          .attr('x2', width - margin.right)
+          .attr('y1', ddY(avgDD))
+          .attr('y2', ddY(avgDD))
+          .attr('stroke', '#3b82f6')
+          .attr('stroke-width', 1)
+          .attr('stroke-dasharray', '2,2')
+          .attr('opacity', 0.4);
+
+        mfPane.append('text')
+          .attr('x', width - margin.right - 5)
+          .attr('y', ddY(avgDD) - 5)
+          .attr('text-anchor', 'end')
+          .attr('class', 'text-[7px] fill-blue-400/50 font-bold')
+          .text(`AVG DD: ${avgDD.toFixed(1)}%`);
+
+        // Drawdown Line
+        const ddLine = d3.line<StockData>()
+          .defined(d => d.drawdownPct !== undefined)
+          .x((d) => xScale(drawData.indexOf(d)))
+          .y(d => ddY(d.drawdownPct || 0))
+          .curve(d3.curveMonotoneX);
+
+        mfPane.append('path')
+          .datum(visibleData)
+          .attr('fill', 'none')
+          .attr('stroke', '#3b82f6')
+          .attr('stroke-width', 1.5)
+          .attr('opacity', 0.8)
+          .attr('d', ddLine);
+
+        // Drawdown Axis (Left side of pane)
+        mfPane.append('g')
+          .attr('transform', `translate(${margin.left}, 0)`)
+          .attr('class', 'text-blue-400 font-bold text-[9px]')
+          .call(d3.axisLeft(ddY).ticks(2).tickFormat(d => `${d}%`));
+
+        // SMA Line
+        const smaLine = d3.line<StockData>()
+          .defined(d => d.avgTotalDollarVolume !== undefined)
+          .x((d) => xScale(drawData.indexOf(d)))
+          .y(d => mfY(d.avgTotalDollarVolume || 0))
+          .curve(d3.curveMonotoneX);
+
+        mfPane.append('path')
+          .datum(visibleData)
+          .attr('fill', 'none')
+          .attr('stroke', '#f59e0b')
+          .attr('stroke-width', 1.5)
+          .attr('stroke-dasharray', '4,4')
+          .attr('d', smaLine);
+
+        // Axis
+        mfPane.append('g')
+          .attr('transform', `translate(${width - margin.right}, 0)`)
+          .attr('class', 'text-zinc-400 font-bold text-[10px]')
+          .call(d3.axisRight(mfY).ticks(3, ".2s"));
+
+        // Label
+        mfPane.append('text')
+          .attr('x', margin.left)
+          .attr('y', -8)
+          .attr('class', 'text-[11px] font-black fill-zinc-400 uppercase tracking-widest')
+          .text('Money Flow & Drawdown');
+          
+        currentY += paneHeights.moneyFlow + gap;
       }
 
       // Smart S/R Zones and Masking
@@ -1111,6 +1663,16 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
     const initialX = t.rescaleX(x);
     const initialY = stateRef.current.isYAuto ? y.domain(stateRef.current.yDomain) : t.rescaleY(y);
     
+    // Use processedData instead of raw data for drawing to ensure indicators are present
+    // However, the draw function uses 'data' from props. 
+    // We need to pass the processed data to the draw function or update the data reference.
+    // Since 'data' is in the dependency array of useEffect, we can just use processedData inside draw if we update the reference.
+    // But 'draw' is defined inside useEffect which closes over 'data'.
+    // Let's modify 'draw' to use 'processedData' which we will calculate inside useEffect or pass to it.
+    
+    // Actually, let's just recalculate inside useEffect for simplicity as we did with useMemo but inside the effect
+    // or better, use the memoized processedData in the dependency array.
+    
     gx.call(xAxis.scale(initialX));
     gy.call(yAxis.scale(initialY));
     draw(initialX, initialY);
@@ -1274,7 +1836,12 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
     selectedSRDate,
     srZones,
     revealIndex,
-    isLogScale
+    isLogScale,
+    rsiDivergences,
+    macdDivergences,
+    showElliottWaves,
+    showVolumeSpikes,
+    processedData
   ]);
 
   return (
@@ -1449,7 +2016,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
             onMouseDown={handleMouseDown}
           >
             <span className={`font-bold uppercase ${activeDivergence.div.type.includes('Bullish') ? 'text-emerald-500' : 'text-rose-500'}`}>
-              {activeDivergence.div.type}
+              {activeDivergence.div.indicator} {activeDivergence.div.type}
             </span>
             <button 
               onClick={(e) => { e.stopPropagation(); setActiveDivergence(null); }}

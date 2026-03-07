@@ -128,3 +128,28 @@ export async function getGeminiNewsAnalysis(symbol: string, date: string): Promi
   if (!text) throw new Error("Empty response from Gemini");
   return JSON.parse(text);
 }
+
+export async function getElliottWaveAnalysis(symbol: string, currentLabel: string, contextData: string): Promise<string> {
+  const prompt = `Analyze the Elliott Wave count for ${symbol}.
+  The current automated system has labeled a point as "${currentLabel}".
+  Based on the recent price action provided below (OHLCV data), please evaluate if this label is reasonable.
+  
+  Please provide a concise analysis in Thai covering the following points:
+  1. **Start Date:** When did the current wave likely start? (จุดเริ่มต้นของคลื่นนี้ตั้งแต่วันที่เท่าไหร่)
+  2. **Current Zone:** What is the current status/zone? (ตอนนี้อยู่ในโซนไหน)
+  3. **Future Scenarios:** What are the possible future paths? (อนาคตจะเป็นไปได้ในหนทางไหนบ้าง)
+  
+  Price Data Context (Last 20 bars):
+  ${contextData}
+  
+  Response should be in Thai, concise, and focused on technical analysis.`;
+
+  const response = await getAI().models.generateContent({
+    model: "gemini-3.1-pro-preview",
+    contents: [{ parts: [{ text: prompt }] }]
+  });
+
+  const text = response.text;
+  if (!text) throw new Error("Empty response from Gemini");
+  return text;
+}

@@ -26,6 +26,14 @@ interface ChartControlsProps {
   setShowRSI: (val: boolean) => void;
   showMACD: boolean;
   setShowMACD: (val: boolean) => void;
+  showElliottWaves: boolean;
+  setShowElliottWaves: (val: boolean) => void;
+  showVolumeSpikes: boolean;
+  setShowVolumeSpikes: (val: boolean) => void;
+  showIchimoku: boolean;
+  setShowIchimoku: (val: boolean) => void;
+  showMoneyFlow: boolean;
+  setShowMoneyFlow: (val: boolean) => void;
   isInvertedY: boolean;
   setIsInvertedY: (val: boolean) => void;
   isLogScale: boolean;
@@ -71,6 +79,14 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
   setShowRSI,
   showMACD,
   setShowMACD,
+  showElliottWaves,
+  setShowElliottWaves,
+  showVolumeSpikes,
+  setShowVolumeSpikes,
+  showIchimoku,
+  setShowIchimoku,
+  showMoneyFlow,
+  setShowMoneyFlow,
   isInvertedY,
   setIsInvertedY,
   isLogScale,
@@ -348,6 +364,65 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
             )}
           >
             {t.emax}
+          </button>
+        </div>
+      </div>
+
+      {/* Analysis Group */}
+      <div className="flex flex-col gap-1.5">
+        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Analysis</span>
+        <div className={cn("flex p-1 rounded-lg border gap-1", isDark ? "bg-zinc-800/50 border-zinc-700/50" : "bg-zinc-50 border-zinc-200")}>
+          <button
+            disabled={isSmartSRMode}
+            onClick={() => setShowElliottWaves(!showElliottWaves)}
+            title="Auto-Wave Labeling (Elliott Wave)"
+            className={cn(
+              "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
+              showElliottWaves 
+                ? (isDark ? "bg-indigo-900/40 text-indigo-400 shadow-sm" : "bg-indigo-100 text-indigo-700 shadow-sm") 
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            )}
+          >
+            E-Wave
+          </button>
+          <button
+            disabled={isSmartSRMode}
+            onClick={() => setShowVolumeSpikes(!showVolumeSpikes)}
+            title="Old Money Tracker (Volume Spikes)"
+            className={cn(
+              "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
+              showVolumeSpikes 
+                ? (isDark ? "bg-amber-900/40 text-amber-400 shadow-sm" : "bg-amber-100 text-amber-700 shadow-sm") 
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            )}
+          >
+            Old Money
+          </button>
+          <button
+            disabled={isSmartSRMode}
+            onClick={() => setShowIchimoku(!showIchimoku)}
+            title="Ichimoku Cloud"
+            className={cn(
+              "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
+              showIchimoku 
+                ? (isDark ? "bg-teal-900/40 text-teal-400 shadow-sm" : "bg-teal-100 text-teal-700 shadow-sm") 
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            )}
+          >
+            Ichimoku
+          </button>
+          <button
+            disabled={isSmartSRMode}
+            onClick={() => setShowMoneyFlow(!showMoneyFlow)}
+            title="Money Flow & Climax Analyzer"
+            className={cn(
+              "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
+              showMoneyFlow 
+                ? (isDark ? "bg-cyan-900/40 text-cyan-400 shadow-sm" : "bg-cyan-100 text-cyan-700 shadow-sm") 
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            )}
+          >
+            Money Flow
           </button>
         </div>
       </div>

@@ -84,6 +84,7 @@ db.exec(`
 
 const CACHE_TTL = {
   '1h': 15 * 60 * 1000, // 15 minutes
+  '90m': 15 * 60 * 1000, // 15 minutes
   '1d': 60 * 60 * 1000, // 1 hour
   '1wk': 24 * 60 * 60 * 1000, // 1 day
   'financials': 7 * 24 * 60 * 60 * 1000, // 7 days
@@ -600,7 +601,7 @@ async function startServer() {
 
       // Yahoo Finance limits hourly data to the last 730 days
       let startDate = from as string;
-      if (interval === '1h') {
+      if (interval === '1h' || interval === '90m') {
         const twoYearsAgo = new Date();
         twoYearsAgo.setDate(twoYearsAgo.getDate() - 720);
         startDate = twoYearsAgo.toISOString().split('T')[0];

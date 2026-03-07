@@ -20,6 +20,33 @@ export interface StockData {
   macd?: number;
   macdSignal?: number;
   macdHistogram?: number;
+  elliottWaveLabel?: string;
+  elliottWaveId?: string;
+  elliottWaveType?: 'impulse' | 'correction';
+  elliottWaveConfidence?: number;
+  elliottWaveProjection?: {
+    targetPrice: number;
+    label: string;
+    waveLabel: string;
+  };
+  isVolumeSpike?: boolean;
+  isOrderBlock?: boolean;
+  tenkanSen?: number;
+  kijunSen?: number;
+  senkouSpanA?: number;
+  senkouSpanB?: number;
+  chikouSpan?: number;
+  
+  // Money Flow & Climax Analyzer
+  buyDollarVolume?: number;
+  sellDollarVolume?: number;
+  totalDollarVolume?: number;
+  avgTotalDollarVolume?: number;
+  drawdownPct?: number;
+  isSellingClimax?: boolean;
+  isAbsorption?: boolean;
+  isPanic?: boolean;
+  isExhaustion?: boolean;
 }
 
 export interface ApiResponse {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Brain, MessageSquare, Newspaper, BarChart3, Loader2, ExternalLink, User } from 'lucide-react';
+import { X, Brain, MessageSquare, Newspaper, BarChart3, Loader2, ExternalLink, User, Activity } from 'lucide-react';
 import { cn } from '../utils/cn';
 import Markdown from 'react-markdown';
 
@@ -25,6 +25,7 @@ interface GeminiModalProps {
   loading: boolean;
   error: string | null;
   analysis: GeminiAnalysis | null;
+  elliottAnalysis?: string | null;
   theme?: 'light' | 'dark';
 }
 
@@ -36,6 +37,7 @@ export const GeminiModal: React.FC<GeminiModalProps> = ({
   loading,
   error,
   analysis,
+  elliottAnalysis,
   theme
 }) => {
   if (!isOpen) return null;
@@ -107,6 +109,21 @@ export const GeminiModal: React.FC<GeminiModalProps> = ({
               </div>
               <h3 className={cn("text-base font-bold mb-2", isDark ? "text-rose-400" : "text-rose-900")}>{t.analysis_failed}</h3>
               <p className={cn("text-sm max-w-md", isDark ? "text-rose-300" : "text-rose-700")}>{error}</p>
+            </div>
+          ) : elliottAnalysis ? (
+            <div className="space-y-6">
+              <div className="flex items-center gap-2 text-rose-500">
+                <Activity className="w-5 h-5" />
+                <h3 className="text-sm font-black uppercase tracking-widest">Elliott Wave Analysis</h3>
+              </div>
+              <div className={cn(
+                "p-6 rounded-2xl border space-y-4",
+                isDark ? "bg-zinc-900/50 border-zinc-800" : "bg-zinc-50 border-zinc-100"
+              )}>
+                <div className={cn("text-sm leading-relaxed markdown-body", isDark ? "text-zinc-300" : "text-zinc-700")}>
+                  <Markdown>{elliottAnalysis}</Markdown>
+                </div>
+              </div>
             </div>
           ) : analysis ? (
             <div className="grid grid-cols-1 gap-8">

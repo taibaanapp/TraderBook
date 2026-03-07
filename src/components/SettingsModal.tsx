@@ -25,6 +25,8 @@ interface SettingsModalProps {
   onToggleRecentStocks: () => void;
   showNotebook: boolean;
   onToggleNotebook: () => void;
+  isElliottWaveAiEnabled: boolean;
+  onToggleElliottWaveAi: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -46,7 +48,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   showRecentStocks,
   onToggleRecentStocks,
   showNotebook,
-  onToggleNotebook
+  onToggleNotebook,
+  isElliottWaveAiEnabled,
+  onToggleElliottWaveAi
 }) => {
   const isDark = theme === 'dark';
 
@@ -410,6 +414,46 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className={cn(
                 "w-3 h-3 rounded-full bg-white absolute top-1 transition-transform",
                 showNotebook ? "left-6" : "left-1"
+              )} />
+            </button>
+          </div>
+
+          {/* Elliott Wave AI Toggle */}
+          <div className={cn(
+            "p-4 rounded-2xl border flex items-center justify-between transition-colors",
+            isDark ? "bg-zinc-800/30 border-zinc-800" : "bg-zinc-50 border-zinc-100"
+          )}>
+            <div className="flex items-center gap-4">
+              <div className={cn(
+                "w-10 h-10 rounded-xl flex items-center justify-center",
+                isElliottWaveAiEnabled 
+                  ? (isDark ? "bg-purple-900/30 text-purple-400" : "bg-purple-100 text-purple-600")
+                  : (isDark ? "bg-zinc-800 text-zinc-500" : "bg-zinc-200 text-zinc-500")
+              )}>
+                <Brain className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className={cn("text-sm font-bold", isDark ? "text-zinc-100" : "text-zinc-900")}>
+                  Elliott Wave AI
+                </h3>
+                <p className="text-[10px] text-zinc-500 mt-0.5">
+                  Enable AI analysis for Elliott Waves
+                </p>
+              </div>
+            </div>
+            
+            <button
+              onClick={onToggleElliottWaveAi}
+              className={cn(
+                "w-10 h-5 rounded-full transition-colors relative",
+                isElliottWaveAiEnabled 
+                  ? "bg-purple-500" 
+                  : (isDark ? "bg-zinc-700" : "bg-zinc-300")
+              )}
+            >
+              <div className={cn(
+                "w-3 h-3 rounded-full bg-white absolute top-1 transition-transform",
+                isElliottWaveAiEnabled ? "left-6" : "left-1"
               )} />
             </button>
           </div>
