@@ -1,5 +1,5 @@
 {
-  "name": "CrossVision",
-  "description": "See the Cross before it happens. Advanced stock analysis with predictive Death Cross simulation.",
+  "name": "SimTrade AI",
+  "description": "Stock trading simulation tool with AI analysis, KPI tracking, and sensitivity analysis.",
   "requestFramePermissions": []
 }

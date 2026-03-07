@@ -1,6 +1,9 @@
 import React from 'react';
 import { Info, Globe, Users, MessageSquare, TrendingUp, Brain, Power } from 'lucide-react';
 import { cn } from '../utils/cn';
+import { TRANSLATIONS } from '../constants/translations';
+
+const t = TRANSLATIONS.TH.profile;
 
 interface StockProfileData {
   description: string;
@@ -50,7 +53,7 @@ export const StockProfile: React.FC<StockProfileProps> = ({
             <Info className={cn("w-6 h-6", isDark ? "text-zinc-900" : "text-white")} />
           </div>
           <div>
-            <h3 className={cn("font-extrabold text-xl tracking-tight", isDark ? "text-zinc-100" : "text-zinc-900")}>Stock Insight</h3>
+            <h3 className={cn("font-extrabold text-xl tracking-tight", isDark ? "text-zinc-100" : "text-zinc-900")}>{t.insight}</h3>
             <p className="text-xs font-bold uppercase tracking-[0.15em] text-zinc-400">{symbol} Profile</p>
           </div>
         </button>
@@ -85,8 +88,8 @@ export const StockProfile: React.FC<StockProfileProps> = ({
           {!isAiEnabled ? (
             <div className="text-center py-8">
               <Brain className="w-12 h-12 mx-auto mb-4 text-zinc-300 dark:text-zinc-700" />
-              <p className="text-sm font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">AI Insight is Disabled</p>
-              <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-2">Turn on AI to generate business profile and outlook.</p>
+              <p className="text-sm font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">{t.ai_disabled}</p>
+              <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-2">{t.ai_disabled_desc}</p>
             </div>
           ) : loading ? (
             <div className="space-y-6">
@@ -99,7 +102,7 @@ export const StockProfile: React.FC<StockProfileProps> = ({
               <section>
                 <div className="flex items-center gap-2.5 mb-3">
                   <Globe className="w-4 h-4 text-rose-500" />
-                  <h4 className={cn("text-xs font-black uppercase tracking-widest", isDark ? "text-zinc-500" : "text-zinc-400")}>Business Description</h4>
+                  <h4 className={cn("text-xs font-black uppercase tracking-widest", isDark ? "text-zinc-500" : "text-zinc-400")}>{t.description}</h4>
                 </div>
                 <p className={cn("text-sm leading-relaxed font-medium", isDark ? "text-zinc-300" : "text-zinc-600")}>
                   {data.description}
@@ -109,7 +112,7 @@ export const StockProfile: React.FC<StockProfileProps> = ({
               <section>
                 <div className="flex items-center gap-2.5 mb-3">
                   <TrendingUp className="w-4 h-4 text-emerald-500" />
-                  <h4 className={cn("text-xs font-black uppercase tracking-widest", isDark ? "text-zinc-500" : "text-zinc-400")}>Revenue & Geography</h4>
+                  <h4 className={cn("text-xs font-black uppercase tracking-widest", isDark ? "text-zinc-500" : "text-zinc-400")}>{t.revenue}</h4>
                 </div>
                 <p className={cn("text-sm leading-relaxed font-medium", isDark ? "text-zinc-300" : "text-zinc-600")}>
                   {data.revenue}
@@ -119,7 +122,7 @@ export const StockProfile: React.FC<StockProfileProps> = ({
               <section>
                 <div className="flex items-center gap-2.5 mb-3">
                   <Users className="w-4 h-4 text-blue-500" />
-                  <h4 className={cn("text-xs font-black uppercase tracking-widest", isDark ? "text-zinc-500" : "text-zinc-400")}>Competitors</h4>
+                  <h4 className={cn("text-xs font-black uppercase tracking-widest", isDark ? "text-zinc-500" : "text-zinc-400")}>{t.competitors}</h4>
                 </div>
                 <div className="flex flex-wrap gap-2.5">
                   {(Array.isArray(data.competitors) ? data.competitors : []).map((comp, idx) => (
@@ -139,7 +142,7 @@ export const StockProfile: React.FC<StockProfileProps> = ({
               )}>
                 <div className="flex items-center gap-2.5 mb-3">
                   <MessageSquare className="w-4 h-4 text-amber-500" />
-                  <h4 className={cn("text-xs font-black uppercase tracking-widest", isDark ? "text-zinc-500" : "text-zinc-400")}>Management Outlook</h4>
+                  <h4 className={cn("text-xs font-black uppercase tracking-widest", isDark ? "text-zinc-500" : "text-zinc-400")}>{t.outlook}</h4>
                 </div>
                 <p className={cn("text-sm leading-relaxed font-medium italic", isDark ? "text-zinc-300" : "text-zinc-600")}>
                   "{data.outlook}"
@@ -148,7 +151,7 @@ export const StockProfile: React.FC<StockProfileProps> = ({
             </>
           ) : (
             <div className="text-center py-8">
-              <p className="text-sm text-zinc-500 italic">No profile data available for this symbol.</p>
+              <p className="text-sm text-zinc-500 italic">{t.no_data}</p>
             </div>
           )}
         </div>

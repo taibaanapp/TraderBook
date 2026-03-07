@@ -3,6 +3,12 @@ import { createServer as createViteServer } from "vite";
 import YahooFinance from 'yahoo-finance2';
 import Database from 'better-sqlite3';
 import path from 'path';
+import fs from 'fs';
+
+const HISTORY_DIR = path.join(process.cwd(), 'data', 'history');
+if (!fs.existsSync(HISTORY_DIR)) {
+  fs.mkdirSync(HISTORY_DIR, { recursive: true });
+}
 
 const yahooFinance = new YahooFinance({
   validation: {
@@ -47,15 +53,16 @@ db.exec(`
     count INTEGER,
     PRIMARY KEY (api_name, usage_date)
   );
+  CREATE TABLE IF NOT EXISTS external_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    domain TEXT,
+    purpose TEXT,
+    timestamp INTEGER
+  );
   CREATE TABLE IF NOT EXISTS custom_stocks (
     symbol TEXT PRIMARY KEY,
     name TEXT,
     market TEXT
-  );
-  CREATE TABLE IF NOT EXISTS stock_profiles (
-    symbol TEXT PRIMARY KEY,
-    data TEXT,
-    timestamp INTEGER
   );
   CREATE TABLE IF NOT EXISTS predictions (
     id TEXT PRIMARY KEY,
@@ -82,11 +89,40 @@ const CACHE_TTL = {
   'financials': 7 * 24 * 60 * 60 * 1000, // 7 days
 };
 
+function logExternalRequest(domain: string, purpose: string) {
+  try {
+    db.prepare('INSERT INTO external_requests (domain, purpose, timestamp) VALUES (?, ?, ?)').run(
+      domain, purpose, Date.now()
+    );
+  } catch (e) {
+    console.error('Failed to log external request', e);
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json());
+
+  app.get("/api/admin/external-requests", (req, res) => {
+    try {
+      const stats = db.prepare(`
+        SELECT 
+          domain,
+          purpose,
+          date(timestamp / 1000, 'unixepoch') as day,
+          COUNT(*) as count
+        FROM external_requests
+        GROUP BY domain, purpose, day
+        ORDER BY day DESC, count DESC
+      `).all();
+      res.json(stats);
+    } catch (error) {
+      console.error('Admin API Error:', error);
+      res.status(500).json({ error: 'Failed to fetch external request stats' });
+    }
+  });
 
   // API routes
   app.get("/api/transactions", (req, res) => {
@@ -177,103 +213,6 @@ async function startServer() {
     }
   });
 
-  app.get("/api/stock/profile/:symbol", async (req, res) => {
-    const { symbol } = req.params;
-    const { exchange } = req.query;
-    const apiKey = process.env.GeNews_api;
-    const today = new Date().toISOString().split('T')[0];
-
-    if (!apiKey) {
-      return res.status(500).json({ error: "GeNews_api is not configured." });
-    }
-
-    try {
-      // 1. Check Cache
-      const cached = db.prepare('SELECT data, timestamp FROM stock_profiles WHERE symbol = ?').get(symbol) as { data: string, timestamp: number } | undefined;
-      
-      // Cache TTL: 90 days (approx. quarterly earnings cycle)
-      const NINETY_DAYS = 90 * 24 * 60 * 60 * 1000;
-      if (cached && (Date.now() - cached.timestamp < NINETY_DAYS)) {
-        return res.json(JSON.parse(cached.data));
-      }
-
-      // 2. Check Daily Limit (10 per day for new/expired profiles)
-      const usage = db.prepare('SELECT count FROM api_usage WHERE api_name = ? AND usage_date = ?').get('stock_profile', today) as { count: number } | undefined;
-      
-      if (usage && usage.count >= 10) {
-        // If we have old cached data, return it even if expired, rather than failing
-        if (cached) {
-          return res.json(JSON.parse(cached.data));
-        }
-        return res.status(429).json({ error: "Daily limit for new stock insights reached (10/day). Please try again tomorrow." });
-      }
-
-      // 3. Call Gemini
-      const exchangeContext = exchange ? ` on the ${exchange} exchange` : '';
-      const prompt = `Provide a detailed business profile for the stock symbol ${symbol}${exchangeContext}. 
-      Make sure to identify the correct company based on the exchange if provided (e.g., if it's a Thai stock, focus on the Thai company).
-      Include the following information in Thai:
-      1. Business Description (ทำอะไร)
-      2. Main Revenue Sources and Countries (รายได้หลักจากอะไร จากประเทศใด)
-      3. Main Competitors (คู่แข่งคือหุ้นตัวใด)
-      4. Recent Management Outlook/Comments (ล่าสุดผู้บริหารให้ความเห็นไปในทิศทางใด)
-      
-      Format the response in JSON with the following keys: "description", "revenue", "competitors", "outlook". 
-      The values should be strings or arrays of strings as appropriate. Use professional Thai language.`;
-
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
-      
-      const response = await fetch(geminiUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: "OBJECT",
-              properties: {
-                description: { type: "STRING" },
-                revenue: { type: "STRING" },
-                competitors: { type: "ARRAY", items: { type: "STRING" } },
-                outlook: { type: "STRING" }
-              },
-              required: ["description", "revenue", "competitors", "outlook"]
-            }
-          }
-        })
-      });
-
-      if (!response.ok) {
-        if (cached) return res.json(JSON.parse(cached.data));
-        throw new Error("Failed to fetch from Gemini");
-      }
-
-      const result = await response.json();
-      const contentText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!contentText) throw new Error("Empty response from Gemini");
-      
-      const content = JSON.parse(contentText);
-
-      // 4. Save to Cache
-      db.prepare('INSERT OR REPLACE INTO stock_profiles (symbol, data, timestamp) VALUES (?, ?, ?)').run(
-        symbol, JSON.stringify(content), Date.now()
-      );
-
-      // 5. Update Usage
-      if (usage) {
-        db.prepare('UPDATE api_usage SET count = count + 1 WHERE api_name = ? AND usage_date = ?').run('stock_profile', today);
-      } else {
-        db.prepare('INSERT INTO api_usage (api_name, usage_date, count) VALUES (?, ?, ?)').run('stock_profile', today, 1);
-      }
-
-      res.json(content);
-    } catch (error: any) {
-      console.error("Stock Profile Error:", error);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
-
   app.get("/api/news/:symbol", async (req, res) => {
     const { symbol } = req.params;
     try {
@@ -288,7 +227,10 @@ async function startServer() {
           throw e;
         }
       };
-      const result = await safeYahooCall(() => yahooFinance.search(symbol, { newsCount: 5 }));
+      const result = await safeYahooCall(() => {
+        logExternalRequest('query2.finance.yahoo.com', 'Yahoo: Search News');
+        return yahooFinance.search(symbol, { newsCount: 5 });
+      });
       console.log(`News found for ${symbol}: ${result.news?.length || 0}`);
       res.json(result.news || []);
     } catch (error) {
@@ -315,6 +257,7 @@ async function startServer() {
       Format the response in JSON with the following keys: "summary", "social", "analysis". 
       Keep the tone professional and analytical.`;
 
+      logExternalRequest('api.x.ai', 'Grok: News Analysis');
       const response = await fetch("https://api.x.ai/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -342,117 +285,6 @@ async function startServer() {
       res.json(content);
     } catch (error: any) {
       console.error("Grok Proxy Error:", error);
-      res.status(500).json({ error: "Internal server error", message: error.message });
-    }
-  });
-
-  app.post("/api/gemini/news", async (req, res) => {
-    const { symbol, date } = req.body;
-    const apiKey = process.env.GeNews_api;
-
-    if (!apiKey) {
-      return res.status(500).json({ error: "GeNews_api is not configured in environment variables." });
-    }
-
-    const today = new Date().toISOString().split('T')[0];
-    
-    try {
-      // Rate limiting: 30 calls per day
-      const usage = db.prepare('SELECT count FROM api_usage WHERE api_name = ? AND usage_date = ?').get('gemini_news', today) as { count: number } | undefined;
-      
-      if (usage && usage.count >= 30) {
-        return res.status(429).json({ error: "Daily limit reached (30 calls/day). Please try again tomorrow." });
-      }
-
-      const prompt = `วิเคราะห์หุ้น ${symbol} ในช่วงวันที่ ${date} (บวก/ลบ 4 วัน) โดยใช้ Google Search เพื่อหาข้อมูลดังนี้:
-      1. ข่าวสำคัญ 5 ข่าวล่าสุด (หัวข้อข่าวและลิงค์ URL)
-      2. ความคิดเห็นจากโซเชียลมีเดีย (ระบุชื่อผู้โพสต์/แหล่งที่มา และลิงค์ URL ถ้ามี)
-      3. บทวิเคราะห์จาก AI โดยประมวลผลจากข่าวและความเห็นของผู้คน พร้อมให้คำแนะนำว่าควร "ลงทุน", "กังวล", หรือ "ควรรอ" รวมถึงนำคำพูดของผู้บริหารหรือข้อมูลการเงินที่หาได้มาประกอบการวิเคราะห์
-
-      กรุณาตอบเป็นภาษาไทยทั้งหมดในรูปแบบ JSON ตามโครงสร้างที่กำหนด:
-      - headlines: รายการข่าว 5 ข่าว (title, url)
-      - social_posts: รายการความคิดเห็น (author, content, url)
-      - ai_analysis: บทวิเคราะห์เชิงลึก (summary, recommendation, details)`;
-
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
-      
-      const response = await fetch(geminiUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          tools: [{ googleSearch: {} }],
-          generationConfig: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: "OBJECT",
-              properties: {
-                headlines: {
-                  type: "ARRAY",
-                  items: {
-                    type: "OBJECT",
-                    properties: {
-                      title: { type: "STRING" },
-                      url: { type: "STRING" }
-                    },
-                    required: ["title", "url"]
-                  }
-                },
-                social_posts: {
-                  type: "ARRAY",
-                  items: {
-                    type: "OBJECT",
-                    properties: {
-                      author: { type: "STRING" },
-                      content: { type: "STRING" },
-                      url: { type: "STRING" }
-                    },
-                    required: ["author", "content", "url"]
-                  }
-                },
-                ai_analysis: {
-                  type: "OBJECT",
-                  properties: {
-                    summary: { type: "STRING" },
-                    recommendation: { type: "STRING" },
-                    details: { type: "STRING" }
-                  },
-                  required: ["summary", "recommendation", "details"]
-                }
-              },
-              required: ["headlines", "social_posts", "ai_analysis"]
-            }
-          }
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Gemini API Error:", errorText);
-        return res.status(response.status).json({ error: "Failed to fetch from Gemini API", details: errorText });
-      }
-
-      const result = await response.json();
-      const contentText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-      
-      if (!contentText) {
-        throw new Error("Empty response from Gemini");
-      }
-
-      const content = JSON.parse(contentText);
-
-      // Increment usage
-      if (usage) {
-        db.prepare('UPDATE api_usage SET count = count + 1 WHERE api_name = ? AND usage_date = ?').run('gemini_news', today);
-      } else {
-        db.prepare('INSERT INTO api_usage (api_name, usage_date, count) VALUES (?, ?, ?)').run('gemini_news', today, 1);
-      }
-
-      res.json(content);
-    } catch (error: any) {
-      console.error("Gemini Proxy Error:", error);
       res.status(500).json({ error: "Internal server error", message: error.message });
     }
   });
@@ -534,7 +366,10 @@ async function startServer() {
       for (const pred of pending) {
         try {
           // Fetch historical data to check price after 5, 10, 20 days
-          const history = await safeYahooCall(() => yahooFinance.chart(pred.symbol, { period1: pred.date, interval: '1d' }));
+          const history = await safeYahooCall(() => {
+            logExternalRequest('query2.finance.yahoo.com', 'Yahoo: Chart History');
+            return yahooFinance.chart(pred.symbol, { period1: pred.date, interval: '1d' });
+          });
           if (history && history.quotes) {
             const quotes = history.quotes.filter(q => q.date > new Date(pred.date));
             
@@ -604,7 +439,10 @@ async function startServer() {
 
       let result;
       try {
-        result = await safeYahooCall(() => yahooFinance.quoteSummary(symbol, { modules: modules as any }));
+        result = await safeYahooCall(() => {
+          logExternalRequest('query2.finance.yahoo.com', 'Yahoo: Quote Summary (Financials)');
+          return yahooFinance.quoteSummary(symbol, { modules: modules as any });
+        });
       } catch (e: any) {
         console.error(`QuoteSummary Error for ${symbol}:`, e.message);
         // If it's a "not found" error, return 404
@@ -745,15 +583,19 @@ async function startServer() {
     }
 
     const cacheKey = `${symbol}_${interval}_${from}`;
+    const cacheFile = path.join(HISTORY_DIR, `${cacheKey}.json`);
 
     try {
-      // Check cache
-      const cached = db.prepare('SELECT data, timestamp FROM stock_cache WHERE key = ?').get(cacheKey) as any;
+      // Check file cache
       const ttl = CACHE_TTL[interval as keyof typeof CACHE_TTL] || CACHE_TTL['1d'];
-
-      if (cached && (Date.now() - cached.timestamp < ttl)) {
-        console.log(`Cache hit for ${cacheKey}`);
-        return res.json(JSON.parse(cached.data));
+      
+      if (fs.existsSync(cacheFile)) {
+        const fileStats = fs.statSync(cacheFile);
+        if (Date.now() - fileStats.mtimeMs < ttl) {
+          console.log(`File cache hit for ${cacheKey}`);
+          const fileData = fs.readFileSync(cacheFile, 'utf-8');
+          return res.json(JSON.parse(fileData));
+        }
       }
 
       // Yahoo Finance limits hourly data to the last 730 days
@@ -788,10 +630,22 @@ async function startServer() {
       let chartResult, indexResult, quoteResult, profileResult;
       try {
         [chartResult, indexResult, quoteResult, profileResult] = await Promise.all([
-          safeYahooCall(() => yahooFinance.chart(symbol, queryOptions)),
-          safeYahooCall(() => yahooFinance.chart(indexSymbol, queryOptions)).catch(() => null),
-          safeYahooCall(() => yahooFinance.quote(symbol)).catch(() => null),
-          safeYahooCall(() => yahooFinance.quoteSummary(symbol, { modules: ['assetProfile'] })).catch(() => null)
+          safeYahooCall(() => {
+            logExternalRequest('query2.finance.yahoo.com', 'Yahoo: Chart');
+            return yahooFinance.chart(symbol, queryOptions);
+          }),
+          safeYahooCall(() => {
+            logExternalRequest('query2.finance.yahoo.com', 'Yahoo: Chart Index');
+            return yahooFinance.chart(indexSymbol, queryOptions);
+          }).catch(() => null),
+          safeYahooCall(() => {
+            logExternalRequest('query2.finance.yahoo.com', 'Yahoo: Quote');
+            return yahooFinance.quote(symbol);
+          }).catch(() => null),
+          safeYahooCall(() => {
+            logExternalRequest('query2.finance.yahoo.com', 'Yahoo: Quote Summary (Profile)');
+            return yahooFinance.quoteSummary(symbol, { modules: ['assetProfile'] });
+          }).catch(() => null)
         ]);
       } catch (e: any) {
         console.error(`Yahoo Finance API Error for ${symbol}:`, e.message);
@@ -889,12 +743,9 @@ async function startServer() {
         }
       };
 
-      // Save to cache
-      db.prepare('INSERT OR REPLACE INTO stock_cache (key, data, timestamp) VALUES (?, ?, ?)').run(
-        cacheKey,
-        JSON.stringify(responseData),
-        Date.now()
-      );
+      // Save to file cache
+      fs.writeFileSync(cacheFile, JSON.stringify(responseData), 'utf-8');
+      console.log(`Saved price history file for ${cacheKey}`);
 
       res.json(responseData);
     } catch (error: any) {

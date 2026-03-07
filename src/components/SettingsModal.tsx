@@ -1,6 +1,9 @@
 import React from 'react';
 import { X, Settings, Brain, Power, Monitor, BarChart2, Search, Image as ImageIcon, History as HistoryIcon, BookOpen } from 'lucide-react';
 import { cn } from '../utils/cn';
+import { TRANSLATIONS } from '../constants/translations';
+
+const t = TRANSLATIONS.TH.settings;
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -72,10 +75,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
             <div>
               <h2 className={cn("text-lg font-black tracking-tight", isDark ? "text-zinc-100" : "text-zinc-900")}>
-                System Settings
+                {t.title}
               </h2>
               <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">
-                Manage Features
+                {t.subtitle}
               </p>
             </div>
           </div>
@@ -107,10 +110,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
               <div>
                 <h3 className={cn("text-sm font-bold", isDark ? "text-zinc-100" : "text-zinc-900")}>
-                  Market Ticker
+                  {t.market_ticker}
                 </h3>
                 <p className="text-[10px] text-zinc-500 mt-0.5">
-                  Show scrolling market data at the top
+                  {t.market_ticker_desc}
                 </p>
               </div>
             </div>
@@ -147,10 +150,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
               <div>
                 <h3 className={cn("text-sm font-bold", isDark ? "text-zinc-100" : "text-zinc-900")}>
-                  Stock Insight
+                  {t.stock_insight}
                 </h3>
                 <p className="text-[10px] text-zinc-500 mt-0.5">
-                  Show stock profile and business info
+                  {t.stock_insight_desc}
                 </p>
               </div>
             </div>
@@ -188,10 +191,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
               <div>
                 <h3 className={cn("text-sm font-bold", isDark ? "text-zinc-100" : "text-zinc-900")}>
-                  AI Generation
+                  {t.ai_generation}
                 </h3>
                 <p className="text-[10px] text-zinc-500 mt-0.5">
-                  Enable Gemini AI for deeper insights
+                  {t.ai_generation_desc}
                 </p>
               </div>
             </div>
@@ -228,10 +231,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
               <div>
                 <h3 className={cn("text-sm font-bold", isDark ? "text-zinc-100" : "text-zinc-900")}>
-                  Gemini News
+                  {t.gemini_news}
                 </h3>
                 <p className="text-[10px] text-zinc-500 mt-0.5">
-                  Enable news search in chart context menu
+                  {t.gemini_news_desc}
                 </p>
               </div>
             </div>
@@ -268,10 +271,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
               <div>
                 <h3 className={cn("text-sm font-bold", isDark ? "text-zinc-100" : "text-zinc-900")}>
-                  Save Image
+                  {t.save_image}
                 </h3>
                 <p className="text-[10px] text-zinc-500 mt-0.5">
-                  Show "Save Image" button on chart
+                  {t.save_image_desc}
                 </p>
               </div>
             </div>
@@ -308,10 +311,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
               <div>
                 <h3 className={cn("text-sm font-bold", isDark ? "text-zinc-100" : "text-zinc-900")}>
-                  Finance Data
+                  {t.finance_data}
                 </h3>
                 <p className="text-[10px] text-zinc-500 mt-0.5">
-                  Show key financial ratios and metrics
+                  {t.finance_data_desc}
                 </p>
               </div>
             </div>
@@ -347,10 +350,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
               <div>
                 <h3 className={cn("text-sm font-bold", isDark ? "text-zinc-100" : "text-zinc-900")}>
-                  Recently Viewed
+                  {t.recently_viewed}
                 </h3>
                 <p className="text-[10px] text-zinc-500 mt-0.5">
-                  Show history of recently viewed stocks
+                  {t.recently_viewed_desc}
                 </p>
               </div>
             </div>
@@ -387,10 +390,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
               <div>
                 <h3 className={cn("text-sm font-bold", isDark ? "text-zinc-100" : "text-zinc-900")}>
-                  Stock Notebook
+                  {t.stock_notebook}
                 </h3>
                 <p className="text-[10px] text-zinc-500 mt-0.5">
-                  Show personal notes for each stock
+                  {t.stock_notebook_desc}
                 </p>
               </div>
             </div>

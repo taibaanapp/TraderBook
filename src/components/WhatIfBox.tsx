@@ -4,6 +4,9 @@ import { SimulationResult, ScenarioResult } from '../services/simulationService'
 import { formatCurrency } from '../utils/formatters';
 import { cn } from '../utils/cn';
 import { format } from 'date-fns';
+import { TRANSLATIONS } from '../constants/translations';
+
+const t = TRANSLATIONS.TH.whatif;
 
 interface WhatIfBoxProps {
   result: SimulationResult;
@@ -47,14 +50,14 @@ const ScenarioCard = ({
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2.5 text-zinc-500">
             <Calendar className="w-4 h-4" />
-            <span className="text-[11px] font-black uppercase tracking-widest">Entry Date</span>
+            <span className="text-[11px] font-black uppercase tracking-widest">{t.entry_date}</span>
           </div>
           <span className={cn("text-base font-black", isDark ? "text-zinc-100" : "text-zinc-900")}>
             {format(new Date(result.entryDate), 'dd MMM yyyy')}
           </span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-black uppercase tracking-widest text-zinc-500">Entry Price</span>
+          <span className="text-[11px] font-black uppercase tracking-widest text-zinc-500">{t.entry_price}</span>
           <span className={cn("text-base font-black", isDark ? "text-zinc-100" : "text-zinc-900")}>
             {formatCurrency(result.entryPrice, currency)}
           </span>
@@ -71,7 +74,7 @@ const ScenarioCard = ({
           "text-[11px] font-black uppercase tracking-[0.2em] mb-2",
           isProfit ? (isDark ? "text-emerald-400" : "text-emerald-600") : (isDark ? "text-rose-400" : "text-rose-600")
         )}>
-          Current Result
+          {t.current_result}
         </p>
         <div className="flex items-center gap-3 mb-2">
           {isProfit ? <TrendingUp className={cn("w-6 h-6", isDark ? "text-emerald-400" : "text-emerald-600")} /> : <TrendingDown className={cn("w-6 h-6", isDark ? "text-rose-400" : "text-rose-600")} />}
@@ -86,7 +89,7 @@ const ScenarioCard = ({
           "text-[11px] font-black uppercase tracking-widest",
           isProfit ? (isDark ? "text-emerald-500" : "text-emerald-500") : (isDark ? "text-rose-500" : "text-rose-500")
         )}>
-          {result.daysHeld} Days Held
+          {result.daysHeld} {t.days_held}
         </p>
       </div>
     </div>
@@ -112,10 +115,10 @@ export const WhatIfBox: React.FC<WhatIfBoxProps> = ({
       )}>
         <div className="flex items-center gap-3 text-zinc-400 mb-3">
           <HelpCircle className="w-5 h-5" />
-          <h3 className="text-xs font-black uppercase tracking-widest">CrossVision Simulation</h3>
+          <h3 className="text-xs font-black uppercase tracking-widest">{t.title}</h3>
         </div>
         <p className="text-xs text-zinc-400 font-bold italic leading-relaxed">
-          Simulation is only available for Daily and Weekly timeframes.
+          {t.not_available}
         </p>
       </div>
     );
@@ -129,10 +132,10 @@ export const WhatIfBox: React.FC<WhatIfBoxProps> = ({
       )}>
         <div className={cn("flex items-center gap-3 mb-4", isDark ? "text-zinc-100" : "text-zinc-900")}>
           <HelpCircle className="w-5 h-5" />
-          <h3 className="text-xs font-black uppercase tracking-widest">CrossVision Simulation</h3>
+          <h3 className="text-xs font-black uppercase tracking-widest">{t.title}</h3>
         </div>
         <p className="text-xs text-zinc-500 font-bold leading-relaxed">
-          No recent Golden Cross (EMA 50 crossing above EMA 135) found in the current data range.
+          {t.no_cross}
         </p>
       </div>
     );
@@ -156,8 +159,8 @@ export const WhatIfBox: React.FC<WhatIfBoxProps> = ({
             <ArrowUpRight className={cn("w-6 h-6", isDark ? "text-zinc-900" : "text-white")} />
           </div>
           <div className="text-left">
-            <h3 className={cn("font-extrabold text-xl tracking-tight", isDark ? "text-zinc-100" : "text-zinc-900")}>CrossVision Simulation</h3>
-            <p className="text-xs font-bold uppercase tracking-[0.15em] text-zinc-400">Comparison Strategies</p>
+            <h3 className={cn("font-extrabold text-xl tracking-tight", isDark ? "text-zinc-100" : "text-zinc-900")}>{t.title}</h3>
+            <p className="text-xs font-bold uppercase tracking-[0.15em] text-zinc-400">{t.comparison}</p>
           </div>
         </div>
         <div className={cn(
@@ -179,8 +182,8 @@ export const WhatIfBox: React.FC<WhatIfBoxProps> = ({
             layout === 'horizontal' ? "lg:flex-row" : ""
           )}>
             <ScenarioCard 
-              title="Strategy A: EMA 50/135 Entry"
-              description="ซื้อเมื่อเกิด Golden Cross และราคาเปิด/ปิดอยู่เหนือเส้น EMA ทั้งสองเส้นเป็นครั้งแรก"
+              title={t.strategy_a}
+              description={t.strategy_a_desc}
               result={result.scenario1}
               currency={currency}
               isDark={isDark}
@@ -191,8 +194,8 @@ export const WhatIfBox: React.FC<WhatIfBoxProps> = ({
             {layout === 'horizontal' && <div className={cn("hidden lg:block w-px", isDark ? "bg-zinc-800" : "bg-zinc-100")} />}
 
             <ScenarioCard 
-              title="Strategy B: EMA 135/VWAP Entry"
-              description="หลังเกิด Golden Cross จะซื้อเมื่อเส้น EMA 135 ตัดขึ้นเหนือเส้น VWAP ล่าสุด"
+              title={t.strategy_b}
+              description={t.strategy_b_desc}
               result={result.scenario2}
               currency={currency}
               isDark={isDark}
@@ -206,14 +209,14 @@ export const WhatIfBox: React.FC<WhatIfBoxProps> = ({
             )}>
               <div className="flex items-center gap-3 mb-3 text-zinc-400">
                 <Info className="w-4 h-4" />
-                <p className="text-xs font-black uppercase tracking-widest">Simulation Methodology</p>
+                <p className="text-xs font-black uppercase tracking-widest">{t.methodology}</p>
               </div>
               <div className="space-y-4 text-xs leading-relaxed">
                 <p className="text-zinc-300 font-medium">
-                  <span className="font-black text-rose-500">Golden Cross:</span> ระบบหาจุดตัด EMA 50 &gt; 135 ล่าสุด และเปรียบเทียบการเข้าซื้อ 2 รูปแบบ: (A) ราคายืนเหนือเส้น และ (B) EMA 135 ตัดเหนือ VWAP
+                  <span className="font-black text-rose-500">Golden Cross:</span> {t.golden_cross_desc}
                 </p>
                 <p className="text-zinc-300 border-t border-white/10 pt-4 font-medium">
-                  <span className="font-black text-rose-500">Death Cross Simulation:</span> คำนวณความผันผวนแบบถ่วงน้ำหนัก (70% 30 วันล่าสุด / 30% 90 วันย้อนหลัง) และใช้ Box-Muller transform จำลองราคา 20 วันล่วงหน้าเพื่อหาจุดตัด EMA 50 &lt; 135
+                  <span className="font-black text-rose-500">Death Cross Simulation:</span> {t.death_cross_desc}
                 </p>
               </div>
             </div>

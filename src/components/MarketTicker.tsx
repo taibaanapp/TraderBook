@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { cn } from '../utils/cn';
+import { TRANSLATIONS } from '../constants/translations';
+
+const t = TRANSLATIONS.TH.ticker;
 
 interface MarketIndex {
   symbol: string;
@@ -13,16 +16,16 @@ interface MarketIndex {
 }
 
 const INDICES: MarketIndex[] = [
-  { symbol: 'SET', name: 'SET Index', price: 1382.51, change: 5.21, changePercent: 0.38, timezone: 'Asia/Bangkok', openHour: 10, closeHour: 17 },
-  { symbol: 'DJI', name: 'Dow Jones', price: 38996.39, change: -97.55, changePercent: -0.25, timezone: 'America/New_York', openHour: 9, closeHour: 16 },
-  { symbol: 'SPX', name: 'S&P 500', price: 5096.27, change: 26.51, changePercent: 0.52, timezone: 'America/New_York', openHour: 9, closeHour: 16 },
-  { symbol: 'IXIC', name: 'Nasdaq', price: 16091.92, change: 183.02, changePercent: 1.15, timezone: 'America/New_York', openHour: 9, closeHour: 16 },
-  { symbol: 'FTSE', name: 'FTSE 100', price: 7630.02, change: 5.21, changePercent: 0.07, timezone: 'Europe/London', openHour: 8, closeHour: 16 },
-  { symbol: 'N225', name: 'Nikkei 225', price: 39910.82, change: 744.63, changePercent: 1.90, timezone: 'Asia/Tokyo', openHour: 9, closeHour: 15 },
-  { symbol: 'HSI', name: 'Hang Seng', price: 16589.44, change: 78.00, changePercent: 0.47, timezone: 'Asia/Hong_Kong', openHour: 9, closeHour: 16 },
-  { symbol: 'GOLD', name: 'Gold Price', price: 2082.90, change: 38.50, changePercent: 1.88, timezone: 'UTC', openHour: 0, closeHour: 24 },
-  { symbol: 'USDTHB', name: 'USD/THB', price: 35.82, change: -0.05, changePercent: -0.14, timezone: 'Asia/Bangkok', openHour: 0, closeHour: 24 },
-  { symbol: 'OIL', name: 'Crude Oil', price: 79.97, change: 1.71, changePercent: 2.19, timezone: 'UTC', openHour: 0, closeHour: 24 },
+  { symbol: 'SET', name: t.set_index, price: 1382.51, change: 5.21, changePercent: 0.38, timezone: 'Asia/Bangkok', openHour: 10, closeHour: 17 },
+  { symbol: 'DJI', name: t.dow_jones, price: 38996.39, change: -97.55, changePercent: -0.25, timezone: 'America/New_York', openHour: 9, closeHour: 16 },
+  { symbol: 'SPX', name: t.sp_500, price: 5096.27, change: 26.51, changePercent: 0.52, timezone: 'America/New_York', openHour: 9, closeHour: 16 },
+  { symbol: 'IXIC', name: t.nasdaq, price: 16091.92, change: 183.02, changePercent: 1.15, timezone: 'America/New_York', openHour: 9, closeHour: 16 },
+  { symbol: 'FTSE', name: t.ftse_100, price: 7630.02, change: 5.21, changePercent: 0.07, timezone: 'Europe/London', openHour: 8, closeHour: 16 },
+  { symbol: 'N225', name: t.nikkei_225, price: 39910.82, change: 744.63, changePercent: 1.90, timezone: 'Asia/Tokyo', openHour: 9, closeHour: 15 },
+  { symbol: 'HSI', name: t.hang_seng, price: 16589.44, change: 78.00, changePercent: 0.47, timezone: 'Asia/Hong_Kong', openHour: 9, closeHour: 16 },
+  { symbol: 'GOLD', name: t.gold_price, price: 2082.90, change: 38.50, changePercent: 1.88, timezone: 'UTC', openHour: 0, closeHour: 24 },
+  { symbol: 'USDTHB', name: t.usd_thb, price: 35.82, change: -0.05, changePercent: -0.14, timezone: 'Asia/Bangkok', openHour: 0, closeHour: 24 },
+  { symbol: 'OIL', name: t.crude_oil, price: 79.97, change: 1.71, changePercent: 2.19, timezone: 'UTC', openHour: 0, closeHour: 24 },
 ];
 
 export const MarketTicker: React.FC<{ 

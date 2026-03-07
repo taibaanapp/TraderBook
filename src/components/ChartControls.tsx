@@ -1,6 +1,9 @@
 import React from 'react';
-import { RefreshCcw, BarChart3, TrendingUp, HelpCircle } from 'lucide-react';
+import { RefreshCcw, BarChart3, TrendingUp, HelpCircle, Maximize, Minimize } from 'lucide-react';
 import { cn } from '../utils/cn';
+import { TRANSLATIONS } from '../constants/translations';
+
+const t = TRANSLATIONS.TH.controls;
 
 interface ChartControlsProps {
   interval: string;
@@ -19,6 +22,10 @@ interface ChartControlsProps {
   setShowEMA20: (val: boolean) => void;
   showEMA50: boolean;
   setShowEMA50: (val: boolean) => void;
+  showRSI: boolean;
+  setShowRSI: (val: boolean) => void;
+  showMACD: boolean;
+  setShowMACD: (val: boolean) => void;
   isInvertedY: boolean;
   setIsInvertedY: (val: boolean) => void;
   isLogScale: boolean;
@@ -31,6 +38,9 @@ interface ChartControlsProps {
   onToggleScenario: () => void;
   onReset: () => void;
   onRefresh: () => void;
+  isFullscreen: boolean;
+  onToggleFullscreen: () => void;
+  onSymbolChange?: (symbol: string) => void;
   theme?: 'light' | 'dark';
 }
 
@@ -57,6 +67,10 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
   setShowEMA20,
   showEMA50,
   setShowEMA50,
+  showRSI,
+  setShowRSI,
+  showMACD,
+  setShowMACD,
   isInvertedY,
   setIsInvertedY,
   isLogScale,
@@ -69,19 +83,51 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
   onToggleScenario,
   onReset,
   onRefresh,
+  isFullscreen,
+  onToggleFullscreen,
+  onSymbolChange,
   theme
 }) => {
   const isDark = theme === 'dark';
+  const [searchInput, setSearchInput] = React.useState('');
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchInput.trim() && onSymbolChange) {
+      onSymbolChange(searchInput.toUpperCase());
+      setSearchInput('');
+    }
+  };
 
   return (
     <div className={cn(
       "flex flex-wrap gap-4 p-4 rounded-xl border transition-colors duration-300 animate-in slide-in-from-top-2 fade-in duration-200",
-      isDark ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200"
+      isDark ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200",
+      isFullscreen && "rounded-none border-b border-x-0 border-t-0"
     )}>
       
+      {/* Search Group */}
+      {isFullscreen && onSymbolChange && (
+        <div className="flex flex-col gap-1.5">
+          <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Search</span>
+          <form onSubmit={handleSearch} className={cn("flex p-1 rounded-lg border", isDark ? "bg-zinc-800/50 border-zinc-700/50" : "bg-zinc-50 border-zinc-200")}>
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="SYMBOL"
+              className={cn(
+                "w-20 px-2 py-1.5 text-[11px] font-bold uppercase tracking-tight bg-transparent outline-none",
+                isDark ? "text-zinc-100 placeholder-zinc-600" : "text-zinc-900 placeholder-zinc-400"
+              )}
+            />
+          </form>
+        </div>
+      )}
+
       {/* Timeframe Group */}
       <div className="flex flex-col gap-1.5">
-        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Timeframe</span>
+        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{t.timeframe}</span>
         <div className={cn("flex p-1 rounded-lg border", isDark ? "bg-zinc-800/50 border-zinc-700/50" : "bg-zinc-50 border-zinc-200", isSmartSRMode && "opacity-50 pointer-events-none")}>
           {INTERVALS.map((int) => (
             <button
@@ -104,12 +150,12 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
 
       {/* Chart Type Group */}
       <div className="flex flex-col gap-1.5">
-        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Type</span>
+        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{t.type}</span>
         <div className={cn("flex p-1 rounded-lg border", isDark ? "bg-zinc-800/50 border-zinc-700/50" : "bg-zinc-50 border-zinc-200", (isSmartSRMode || isScenarioMode) && "opacity-50 pointer-events-none")}>
           <button
             disabled={isSmartSRMode || isScenarioMode}
             onClick={() => setChartType('line')}
-            title="Line Chart"
+            title={t.line}
             className={cn(
               "px-3 py-1.5 text-[11px] font-bold uppercase tracking-tight rounded-md transition-all",
               chartType === 'line' 
@@ -117,12 +163,12 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
                 : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
             )}
           >
-            Line
+            {t.line}
           </button>
           <button
             disabled={isSmartSRMode || isScenarioMode}
             onClick={() => setChartType('candlestick')}
-            title="Candlestick Chart"
+            title={t.candle}
             className={cn(
               "px-3 py-1.5 text-[11px] font-bold uppercase tracking-tight rounded-md transition-all",
               chartType === 'candlestick' 
@@ -130,14 +176,14 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
                 : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
             )}
           >
-            Candle
+            {t.candle}
           </button>
         </div>
       </div>
 
       {/* Tools Group */}
       <div className="flex flex-col gap-1.5">
-        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Tools</span>
+        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{t.tools}</span>
         <div className={cn("flex p-1 rounded-lg border gap-1", isDark ? "bg-zinc-800/50 border-zinc-700/50" : "bg-zinc-50 border-zinc-200")}>
           <button
             onClick={() => {
@@ -145,7 +191,7 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
               setIsSimulationMode(nextMode);
               if (nextMode) setShowEMAX(true);
             }}
-            title="Simulate Death Cross Prediction"
+            title={t.sim_title}
             className={cn(
               "flex items-center gap-1.5 px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
               isSimulationMode 
@@ -154,14 +200,14 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
             )}
           >
             <TrendingUp className={cn("w-3.5 h-3.5", isSimulationMode && "animate-pulse")} />
-            SIM
+            {t.sim}
           </button>
           <button
             onClick={() => {
               setIsSmartSRMode(!isSmartSRMode);
               if (!isSmartSRMode) setIsSimulationMode(false);
             }}
-            title="Smart Support/Resistance Backtest"
+            title={t.sr_title}
             className={cn(
               "flex items-center gap-1.5 px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
               isSmartSRMode 
@@ -170,11 +216,11 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
             )}
           >
             <TrendingUp className={cn("w-3.5 h-3.5", isSmartSRMode && "animate-pulse")} />
-            S/R
+            {t.sr}
           </button>
           <button
             onClick={onToggleScenario}
-            title="Candlestick Scenario Simulator"
+            title={t.ghost_title}
             className={cn(
               "flex items-center gap-1.5 px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
               isScenarioMode 
@@ -183,19 +229,19 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
             )}
           >
             <BarChart3 className={cn("w-3.5 h-3.5", isScenarioMode && "animate-pulse")} />
-            GHOST
+            {t.ghost}
           </button>
         </div>
       </div>
 
       {/* Volume Group */}
       <div className="flex flex-col gap-1.5">
-        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Volume</span>
+        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{t.volume}</span>
         <div className={cn("flex p-1 rounded-lg border gap-1", isDark ? "bg-zinc-800/50 border-zinc-700/50" : "bg-zinc-50 border-zinc-200")}>
           <button
             disabled={isSmartSRMode}
             onClick={() => setShowVolume(!showVolume)}
-            title="Toggle Volume"
+            title={t.vol_title}
             className={cn(
               "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
               showVolume 
@@ -203,12 +249,12 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
                 : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
             )}
           >
-            VOL
+            {t.vol}
           </button>
           <button
             disabled={isSmartSRMode}
             onClick={() => setShowVWAP(!showVWAP)}
-            title="Volume Weighted Average Price"
+            title={t.vwap_title}
             className={cn(
               "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
               showVWAP 
@@ -216,12 +262,12 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
                 : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
             )}
           >
-            VWAP
+            {t.vwap}
           </button>
           <button
             disabled={isSmartSRMode}
             onClick={() => setShowOBV(!showOBV)}
-            title="On-Balance Volume"
+            title={t.obv_title}
             className={cn(
               "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
               showOBV 
@@ -229,19 +275,19 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
                 : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
             )}
           >
-            OBV
+            {t.obv}
           </button>
         </div>
       </div>
 
       {/* Trend Group */}
       <div className="flex flex-col gap-1.5">
-        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Trend</span>
+        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{t.trend}</span>
         <div className={cn("flex p-1 rounded-lg border gap-1", isDark ? "bg-zinc-800/50 border-zinc-700/50" : "bg-zinc-50 border-zinc-200")}>
           <button
             disabled={isSmartSRMode}
             onClick={() => setShowEMA20(!showEMA20)}
-            title="EMA 20 (Blue)"
+            title={t.ema20_title}
             className={cn(
               "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
               showEMA20 
@@ -249,12 +295,12 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
                 : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
             )}
           >
-            EMA 20
+            {t.ema20}
           </button>
           <button
             disabled={isSmartSRMode}
             onClick={() => setShowEMA50(!showEMA50)}
-            title="EMA 50 (Pink)"
+            title={t.ema50_title}
             className={cn(
               "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
               showEMA50 
@@ -262,12 +308,38 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
                 : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
             )}
           >
-            EMA 50
+            {t.ema50}
+          </button>
+          <button
+            disabled={isSmartSRMode}
+            onClick={() => setShowRSI(!showRSI)}
+            title={t.rsi_title}
+            className={cn(
+              "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
+              showRSI 
+                ? (isDark ? "bg-emerald-900/40 text-emerald-400 shadow-sm" : "bg-emerald-100 text-emerald-700 shadow-sm") 
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            )}
+          >
+            {t.rsi}
+          </button>
+          <button
+            disabled={isSmartSRMode}
+            onClick={() => setShowMACD(!showMACD)}
+            title={t.macd_title}
+            className={cn(
+              "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
+              showMACD 
+                ? (isDark ? "bg-rose-900/40 text-rose-400 shadow-sm" : "bg-rose-100 text-rose-700 shadow-sm") 
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            )}
+          >
+            {t.macd}
           </button>
           <button
             disabled={isSmartSRMode}
             onClick={() => setShowEMAX(!showEMAX)}
-            title="Exponential Moving Average (50/135)"
+            title={t.emax_title}
             className={cn(
               "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
               showEMAX 
@@ -275,19 +347,19 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
                 : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
             )}
           >
-            EMA+
+            {t.emax}
           </button>
         </div>
       </div>
 
       {/* View Group */}
       <div className="flex flex-col gap-1.5">
-        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">View</span>
+        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{t.view}</span>
         <div className={cn("flex p-1 rounded-lg border gap-1", isDark ? "bg-zinc-800/50 border-zinc-700/50" : "bg-zinc-50 border-zinc-200")}>
           <button
             disabled={isSmartSRMode}
             onClick={() => setIsLogScale(!isLogScale)}
-            title="Toggle Logarithmic Scale"
+            title={t.log_title}
             className={cn(
               "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
               isLogScale 
@@ -295,11 +367,11 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
                 : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
             )}
           >
-            LOG
+            {t.log}
           </button>
           <button
             onClick={() => setIsInvertedY(!isInvertedY)}
-            title="Invert Y-Axis (Prices)"
+            title={t.invert_y_title}
             className={cn(
               "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
               isInvertedY 
@@ -307,22 +379,32 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
                 : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
             )}
           >
-            INVERT Y
+            {t.invert_y}
           </button>
         </div>
       </div>
 
       {/* Actions Group */}
       <div className="flex flex-col gap-1.5 ml-auto">
-        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest text-right">Actions</span>
+        <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest text-right">{t.actions}</span>
         <div className={cn("flex p-1 rounded-lg border gap-1", isDark ? "bg-zinc-800/50 border-zinc-700/50" : "bg-zinc-50 border-zinc-200")}>
+          <button
+            onClick={onToggleFullscreen}
+            className={cn(
+              "p-1.5 rounded-md transition-all",
+              isDark ? "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700" : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200"
+            )}
+            title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+          >
+            {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+          </button>
           <button
             onClick={onRefresh}
             className={cn(
               "p-1.5 rounded-md transition-all",
               isDark ? "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700" : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200"
             )}
-            title="Refresh Data"
+            title={t.refresh}
           >
             <RefreshCcw className="w-4 h-4" />
           </button>
@@ -332,7 +414,7 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
               "p-1.5 rounded-md transition-all",
               isDark ? "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700" : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200"
             )}
-            title="Reset View"
+            title={t.reset}
           >
             <BarChart3 className="w-4 h-4" />
           </button>

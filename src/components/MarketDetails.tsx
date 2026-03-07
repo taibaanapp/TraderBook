@@ -3,6 +3,9 @@ import { Clock, BarChart2, Activity, TrendingUp, Calendar, Building2, Globe } fr
 import { formatCurrency } from '../utils/formatters';
 import { cn } from '../utils/cn';
 import { StockData, ApiResponse } from '../types';
+import { TRANSLATIONS } from '../constants/translations';
+
+const t = TRANSLATIONS.TH.market;
 
 interface MarketDetailsProps {
   symbol: string;
@@ -35,9 +38,9 @@ export const MarketDetails: React.FC<MarketDetailsProps> = ({ symbol, data, hove
       const time = hours * 60 + minutes;
       const day = thaiTime.getDay();
       
-      if (day === 0 || day === 6) return 'Closed';
-      if ((time >= 600 && time <= 750) || (time >= 870 && time <= 990)) return 'Open';
-      return 'Closed';
+      if (day === 0 || day === 6) return t.closed;
+      if ((time >= 600 && time <= 750) || (time >= 870 && time <= 990)) return t.open;
+      return t.closed;
     } else {
       // US Market (EST)
       const usTime = new Date(now.toLocaleString("en-US", {timeZone: "America/New_York"}));
@@ -46,9 +49,9 @@ export const MarketDetails: React.FC<MarketDetailsProps> = ({ symbol, data, hove
       const time = hours * 60 + minutes;
       const day = usTime.getDay();
       
-      if (day === 0 || day === 6) return 'Closed';
-      if (time >= 570 && time <= 960) return 'Open';
-      return 'Closed';
+      if (day === 0 || day === 6) return t.closed;
+      if (time >= 570 && time <= 960) return t.open;
+      return t.closed;
     }
   };
 
@@ -67,16 +70,16 @@ export const MarketDetails: React.FC<MarketDetailsProps> = ({ symbol, data, hove
       )}>
         <div className="flex items-center gap-2.5">
           <Activity className={cn("w-5 h-5", isDark ? "text-zinc-100" : "text-zinc-900")} />
-          <h3 className={cn("text-xs font-black uppercase tracking-widest", isDark ? "text-zinc-100" : "text-zinc-900")}>Market Data</h3>
+          <h3 className={cn("text-xs font-black uppercase tracking-widest", isDark ? "text-zinc-100" : "text-zinc-900")}>{t.title}</h3>
         </div>
         <div className="flex items-center gap-2.5">
           <div className={cn(
             "px-3 py-1 rounded-lg text-[11px] font-black uppercase tracking-widest flex items-center gap-2",
-            marketStatus === 'Open'
+            marketStatus === t.open
               ? (isDark ? "bg-emerald-900/20 text-emerald-400 border border-emerald-900/30" : "bg-emerald-100 text-emerald-700 border border-emerald-200")
               : (isDark ? "bg-zinc-800 text-zinc-500 border border-zinc-700" : "bg-zinc-100 text-zinc-400 border border-zinc-200")
           )}>
-            <div className={cn("w-2 h-2 rounded-full", marketStatus === 'Open' ? "bg-emerald-500 animate-pulse" : "bg-zinc-400")} />
+            <div className={cn("w-2 h-2 rounded-full", marketStatus === t.open ? "bg-emerald-500 animate-pulse" : "bg-zinc-400")} />
             {marketStatus}
           </div>
           <div className={cn(
@@ -85,7 +88,7 @@ export const MarketDetails: React.FC<MarketDetailsProps> = ({ symbol, data, hove
               ? (isDark ? "bg-amber-900/20 text-amber-400 border border-amber-900/30" : "bg-amber-100 text-amber-700 border border-amber-200") 
               : (isDark ? "bg-emerald-900/20 text-emerald-400 border border-emerald-900/30" : "bg-emerald-100 text-emerald-700 border border-emerald-200")
           )}>
-            {hoveredData ? 'Point' : 'Latest'}
+            {hoveredData ? t.point : t.latest}
           </div>
         </div>
       </div>
@@ -100,13 +103,13 @@ export const MarketDetails: React.FC<MarketDetailsProps> = ({ symbol, data, hove
             <div className="flex items-center gap-2">
               <Building2 className="w-4 h-4 text-zinc-400" />
               <span className="text-xs font-black text-zinc-500 uppercase tracking-widest">
-                {data?.industry || 'General Industry'}
+                {data?.industry || t.general_industry}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <Globe className="w-4 h-4 text-zinc-400" />
               <span className="text-xs font-black text-zinc-400 uppercase tracking-widest">
-                P/E: <span className={isDark ? "text-zinc-100" : "text-zinc-900"}>{typeof data?.fundamentals?.trailingPE === 'number' ? `${data.fundamentals.trailingPE.toFixed(2)}x` : 'N/A'}</span>
+                {t.pe_ratio} <span className={isDark ? "text-zinc-100" : "text-zinc-900"}>{typeof data?.fundamentals?.trailingPE === 'number' ? `${data.fundamentals.trailingPE.toFixed(2)}x` : 'N/A'}</span>
               </span>
             </div>
           </div>
@@ -114,7 +117,7 @@ export const MarketDetails: React.FC<MarketDetailsProps> = ({ symbol, data, hove
 
         {/* Price Section */}
         <div className="pt-8 border-t border-zinc-100 dark:border-zinc-800">
-          <p className="text-[10px] uppercase font-black text-zinc-400 mb-3 tracking-[0.2em]">Current Price</p>
+          <p className="text-[10px] uppercase font-black text-zinc-400 mb-3 tracking-[0.2em]">{t.current_price}</p>
           <div className="flex items-baseline gap-4">
             <span className={cn("text-5xl font-black tracking-tighter", isDark ? "text-zinc-100" : "text-zinc-900")}>
               {formatCurrency(displayData.close, data?.currency)}
@@ -133,19 +136,19 @@ export const MarketDetails: React.FC<MarketDetailsProps> = ({ symbol, data, hove
         {/* OHLC Grid */}
         <div className={cn("grid grid-cols-2 gap-6 pt-6 border-t", isDark ? "border-zinc-800" : "border-zinc-50")}>
           <div>
-            <p className="text-xs uppercase font-black text-zinc-400 mb-1.5 tracking-widest">Open</p>
+            <p className="text-xs uppercase font-black text-zinc-400 mb-1.5 tracking-widest">{t.open_label}</p>
             <p className={cn("text-base font-bold", isDark ? "text-zinc-300" : "text-zinc-700")}>{displayData.open.toFixed(2)}</p>
           </div>
           <div>
-            <p className="text-xs uppercase font-black text-zinc-400 mb-1.5 tracking-widest">High</p>
+            <p className="text-xs uppercase font-black text-zinc-400 mb-1.5 tracking-widest">{t.high_label}</p>
             <p className={cn("text-base font-bold", isDark ? "text-zinc-300" : "text-zinc-700")}>{displayData.high.toFixed(2)}</p>
           </div>
           <div>
-            <p className="text-xs uppercase font-black text-zinc-400 mb-1.5 tracking-widest">Low</p>
+            <p className="text-xs uppercase font-black text-zinc-400 mb-1.5 tracking-widest">{t.low_label}</p>
             <p className={cn("text-base font-bold", isDark ? "text-zinc-300" : "text-zinc-700")}>{displayData.low.toFixed(2)}</p>
           </div>
           <div>
-            <p className="text-xs uppercase font-black text-zinc-400 mb-1.5 tracking-widest">Close</p>
+            <p className="text-xs uppercase font-black text-zinc-400 mb-1.5 tracking-widest">{t.close_label}</p>
             <p className={cn("text-base font-bold", isDark ? "text-zinc-300" : "text-zinc-700")}>{displayData.close.toFixed(2)}</p>
           </div>
         </div>
@@ -155,28 +158,28 @@ export const MarketDetails: React.FC<MarketDetailsProps> = ({ symbol, data, hove
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <BarChart2 className="w-4 h-4 text-zinc-400" />
-              <span className="text-xs uppercase font-black text-zinc-400 tracking-widest">Volume</span>
+              <span className="text-xs uppercase font-black text-zinc-400 tracking-widest">{t.volume}</span>
             </div>
             <span className={cn("text-base font-bold", isDark ? "text-zinc-300" : "text-zinc-700")}>{(displayData.volume / 1000000).toFixed(2)}M</span>
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Clock className="w-4 h-4 text-zinc-400" />
-              <span className="text-xs uppercase font-black text-zinc-400 tracking-widest">Avg Vol (15)</span>
+              <span className="text-xs uppercase font-black text-zinc-400 tracking-widest">{t.avg_vol}</span>
             </div>
             <span className={cn("text-base font-bold", isDark ? "text-zinc-300" : "text-zinc-700")}>{(avgVolume15 / 1000000).toFixed(2)}M</span>
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <TrendingUp className="w-4 h-4 text-zinc-400" />
-              <span className="text-xs uppercase font-black text-zinc-400 tracking-widest">VWAP</span>
+              <span className="text-xs uppercase font-black text-zinc-400 tracking-widest">{t.vwap}</span>
             </div>
             <span className="text-base font-bold text-amber-500">{displayData.vwap ? displayData.vwap.toFixed(2) : '-'}</span>
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Activity className="w-4 h-4 text-zinc-400" />
-              <span className="text-xs uppercase font-black text-zinc-400 tracking-widest">Money Flow</span>
+              <span className="text-xs uppercase font-black text-zinc-400 tracking-widest">{t.money_flow}</span>
             </div>
             <span className={cn(
               "text-sm font-black px-3 py-1 rounded-lg",

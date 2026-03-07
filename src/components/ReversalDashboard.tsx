@@ -2,6 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { X, Activity, TrendingUp, Calendar, Target } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { formatCurrency } from '../utils/formatters';
+import { TRANSLATIONS } from '../constants/translations';
+
+const t = TRANSLATIONS.TH.reversal_dashboard;
 
 interface ReversalDashboardProps {
   isOpen: boolean;
@@ -60,10 +63,10 @@ export const ReversalDashboard: React.FC<ReversalDashboardProps> = ({ isOpen, on
             </div>
             <div>
               <h2 className={cn("text-lg font-black tracking-tight", isDark ? "text-zinc-100" : "text-zinc-900")}>
-                Reversal Dashboard
+                {t.title}
               </h2>
               <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">
-                Logged Signals History
+                {t.subtitle}
               </p>
             </div>
           </div>
@@ -114,13 +117,13 @@ export const ReversalDashboard: React.FC<ReversalDashboardProps> = ({ isOpen, on
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Entry Price</p>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">{t.entry_price}</p>
                       <p className={cn("text-lg font-bold", isDark ? "text-zinc-300" : "text-zinc-700")}>
                         {formatCurrency(pred.price)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Stop Loss</p>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">{t.stop_loss}</p>
                       <p className={cn("text-lg font-bold text-rose-500")}>
                         {formatCurrency(pred.stopLoss)}
                       </p>
@@ -129,7 +132,7 @@ export const ReversalDashboard: React.FC<ReversalDashboardProps> = ({ isOpen, on
                   
                   {pred.reasons && (
                     <div className="mt-2 pt-4 border-t border-zinc-200 dark:border-zinc-700/50">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Conditions Met</p>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">{t.conditions_met}</p>
                       <div className="flex flex-wrap gap-1.5">
                         {JSON.parse(pred.reasons).map((reason: string, i: number) => (
                           <span key={i} className={cn(
@@ -148,8 +151,8 @@ export const ReversalDashboard: React.FC<ReversalDashboardProps> = ({ isOpen, on
           ) : (
             <div className="flex flex-col items-center justify-center h-40 text-center">
               <Target className="w-12 h-12 text-zinc-300 dark:text-zinc-700 mb-4" />
-              <p className="text-sm font-bold text-zinc-500 uppercase tracking-widest">No Signals Logged Yet</p>
-              <p className="text-xs text-zinc-400 mt-2">Signals with score &gt;= 60 will appear here.</p>
+              <p className="text-sm font-bold text-zinc-500 uppercase tracking-widest">{t.no_signals}</p>
+              <p className="text-xs text-zinc-400 mt-2">{t.min_score_desc}</p>
             </div>
           )}
         </div>

@@ -2,8 +2,9 @@ import React, { useRef, useEffect, useMemo, useImperativeHandle, forwardRef } fr
 import * as d3 from 'd3';
 import { format } from 'date-fns';
 import { StockData } from '../types';
+import { detectDivergences, Divergence } from '../services/divergenceService';
 import { cn } from '../utils/cn';
-import { Download, Play, Pause, TrendingUp, HelpCircle, Ghost, AlertTriangle, Target } from 'lucide-react';
+import { Download, Play, Pause, TrendingUp, HelpCircle, Ghost, AlertTriangle, Target, X } from 'lucide-react';
 import { domToPng } from 'modern-screenshot';
 import { SRZone } from '../services/smartSRService';
 import { ScenarioResult } from '../services/scenarioService';
@@ -17,6 +18,8 @@ interface ChartProps {
   showEMAX: boolean;
   showEMA20?: boolean;
   showEMA50?: boolean;
+  showRSI?: boolean;
+  showMACD?: boolean;
   isInvertedY?: boolean;
   chartType: 'line' | 'candlestick';
   onHover: (data: StockData | null) => void;
@@ -36,6 +39,7 @@ interface ChartProps {
   theme?: 'light' | 'dark';
   isLogScale?: boolean;
   showSaveImage?: boolean;
+  isFullscreen?: boolean;
 }
 
 export interface TradingChartHandle {
@@ -51,6 +55,8 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
   showEMAX,
   showEMA20,
   showEMA50,
+  showRSI,
+  showMACD,
   isInvertedY,
   chartType,
   onHover,
@@ -69,11 +75,70 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
   onToggleReveal,
   theme,
   isLogScale,
-  showSaveImage = true
+  showSaveImage = true,
+  isFullscreen
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const isDark = theme === 'dark';
+  
+  const [activeDivergence, setActiveDivergence] = React.useState<{
+    div: Divergence;
+    x: number;
+    y: number;
+    containerWidth: number;
+  } | null>(null);
+
+  // Draggable Tooltip State
+  const [tooltipPos, setTooltipPos] = React.useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = React.useState(false);
+  const dragStartRef = useRef({ x: 0, y: 0 });
+
+  // Center tooltip when it opens
+  useEffect(() => {
+    if (activeDivergence) {
+      const centerX = window.innerWidth / 2 - 150; 
+      const centerY = window.innerHeight / 2 - 100;
+      setTooltipPos({ x: centerX, y: centerY });
+    }
+  }, [activeDivergence]);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    dragStartRef.current = {
+      x: e.clientX - tooltipPos.x,
+      y: e.clientY - tooltipPos.y
+    };
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging) {
+      setTooltipPos({
+        x: e.clientX - dragStartRef.current.x,
+        y: e.clientY - dragStartRef.current.y
+      });
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  // Add global mouse up listener to stop dragging even if mouse leaves tooltip
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('mouseup', handleMouseUp);
+      window.addEventListener('mousemove', handleMouseMove as any);
+    } else {
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mousemove', handleMouseMove as any);
+    }
+    return () => {
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mousemove', handleMouseMove as any);
+    };
+  }, [isDragging]);
+
   const stateRef = useRef({
     zoom: d3.zoomIdentity,
     isYAuto: true,
@@ -82,6 +147,24 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
     lastTransform: d3.zoomIdentity,
     lastDataLength: 0
   });
+
+  const [paneHeights, setPaneHeights] = React.useState({
+    volume: 80,
+    rsi: 80,
+    macd: 80,
+    obv: 80
+  });
+
+  // Reset pane heights when fullscreen changes
+  useEffect(() => {
+    const defaultHeight = isFullscreen ? 150 : 80;
+    setPaneHeights({
+      volume: defaultHeight,
+      rsi: defaultHeight,
+      macd: defaultHeight,
+      obv: defaultHeight
+    });
+  }, [isFullscreen]);
 
   const lastResetRef = useRef(0);
 
@@ -213,15 +296,31 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
     const margin = { top: 20, right: 60, bottom: 30, left: 10 };
     
     // Sub-panes height
-    const subPaneHeight = 80;
     const gap = 20;
     
     let mainAreaHeight = height - margin.top - margin.bottom;
-    if (showOBV) mainAreaHeight -= (subPaneHeight + gap);
-    if (showVolume) mainAreaHeight -= (subPaneHeight + gap);
+    if (showOBV) mainAreaHeight -= (paneHeights.obv + gap);
+    if (showVolume) mainAreaHeight -= (paneHeights.volume + gap);
+    if (showRSI) mainAreaHeight -= (paneHeights.rsi + gap);
+    if (showMACD) mainAreaHeight -= (paneHeights.macd + gap);
 
     svg.attr('width', width).attr('height', height);
     svg.selectAll('*').remove();
+
+    // RSI Gradient
+    const defs = svg.append('defs');
+    const rsiGradient = defs.append('linearGradient')
+      .attr('id', 'rsi-gradient')
+      .attr('gradientUnits', 'userSpaceOnUse')
+      .attr('x1', 0).attr('y1', 0)
+      .attr('x2', 0).attr('y2', paneHeights.rsi);
+
+    rsiGradient.append('stop').attr('offset', '0%').attr('stop-color', '#ef4444'); // Overbought (Top)
+    rsiGradient.append('stop').attr('offset', '30%').attr('stop-color', '#ef4444');
+    rsiGradient.append('stop').attr('offset', '30%').attr('stop-color', '#f59e0b'); // Neutral
+    rsiGradient.append('stop').attr('offset', '70%').attr('stop-color', '#f59e0b');
+    rsiGradient.append('stop').attr('offset', '70%').attr('stop-color', '#10b981'); // Oversold (Bottom)
+    rsiGradient.append('stop').attr('offset', '100%').attr('stop-color', '#10b981');
 
     // Scales
     const xMax = isScenarioMode && scenarioResult ? data.length + scenarioResult.candles.length + 5 : data.length - 1;
@@ -504,7 +603,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
         
         const obvY = d3.scaleLinear()
           .domain([obvMin, obvMax])
-          .range([subPaneHeight, 0]);
+          .range([paneHeights.obv, 0]);
 
         const obvLine = d3.line<StockData>()
           .x((d, i) => xScale(data.indexOf(d)))
@@ -528,7 +627,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
           .attr('class', 'text-[10px] font-bold fill-zinc-400')
           .text('OBV');
 
-        currentY += subPaneHeight + gap;
+        currentY += paneHeights.obv + gap;
       }
 
       if (showVolume) {
@@ -536,7 +635,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
         const maxVol = d3.max(visibleData, (d: StockData) => d.volume) ?? 0;
         const volY = d3.scaleLinear()
           .domain([0, maxVol])
-          .range([subPaneHeight, 0]);
+          .range([paneHeights.volume, 0]);
 
         const barWidth = Math.max(1, (width / (xEnd - xStart)) * 0.8);
         visibleData.forEach(d => {
@@ -545,7 +644,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
             .attr('x', xScale(idx) - barWidth / 2)
             .attr('y', volY(d.volume))
             .attr('width', barWidth)
-            .attr('height', subPaneHeight - volY(d.volume))
+            .attr('height', paneHeights.volume - volY(d.volume))
             .attr('fill', d.volumeColor || 'rgba(148, 163, 184, 0.3)');
         });
 
@@ -559,6 +658,204 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
           .attr('y', -5)
           .attr('class', 'text-[10px] font-bold fill-zinc-400')
           .text('VOLUME');
+
+        currentY += paneHeights.volume + gap;
+      }
+
+      if (showRSI) {
+        const rsiPane = g.append('g').attr('class', 'sub-pane').attr('transform', `translate(0, ${currentY})`);
+        const rsiY = d3.scaleLinear().domain([0, 100]).range([paneHeights.rsi, 0]);
+
+        // RSI Shaded Zone (30-70)
+        rsiPane.append('rect')
+          .attr('x', margin.left)
+          .attr('y', rsiY(70))
+          .attr('width', width - margin.left - margin.right)
+          .attr('height', rsiY(30) - rsiY(70))
+          .attr('fill', isDark ? 'rgba(16, 185, 129, 0.05)' : 'rgba(16, 185, 129, 0.03)')
+          .attr('stroke', 'none');
+
+        // RSI 70/30 lines
+        [30, 70].forEach(level => {
+          rsiPane.append('line')
+            .attr('x1', margin.left)
+            .attr('x2', width - margin.right)
+            .attr('y1', rsiY(level))
+            .attr('y2', rsiY(level))
+            .attr('stroke', level === 70 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)')
+            .attr('stroke-width', 1)
+            .attr('stroke-dasharray', '4,4');
+          
+          rsiPane.append('text')
+            .attr('x', width - margin.right + 5)
+            .attr('y', rsiY(level))
+            .attr('dominant-baseline', 'central')
+            .attr('class', 'text-[8px] font-bold fill-zinc-500')
+            .text(level);
+        });
+
+        const rsiLine = d3.line<StockData>()
+          .x((d, i) => xScale(data.indexOf(d)))
+          .y(d => rsiY(d.rsi || 50))
+          .curve(d3.curveMonotoneX);
+
+        rsiPane.append('path')
+          .datum(data.filter((_, i) => i <= maxIdx))
+          .attr('fill', 'none')
+          .attr('stroke', 'url(#rsi-gradient)')
+          .attr('stroke-width', 1.5)
+          .attr('d', rsiLine);
+
+        // Divergence Detection (Version 3)
+        const divergences = detectDivergences(data, 60);
+        
+        // Filter divergences to only show those within the visible range (plus some buffer)
+        const visibleDivergences = divergences.filter(div => 
+          (div.start.index >= xStart - 10 && div.start.index <= xEnd + 10) || 
+          (div.end.index >= xStart - 10 && div.end.index <= xEnd + 10)
+        );
+
+        visibleDivergences.forEach(div => {
+          const isBullish = div.type.includes('Bullish');
+          const color = isBullish ? '#10b981' : '#f43f5e';
+          const isHidden = div.type.includes('Hidden');
+          const dashArray = isHidden ? '2,2' : '4,2'; // Distinguish hidden vs regular
+          
+          // Draw on RSI Pane
+          rsiPane.append('line')
+            .attr('x1', xScale(div.start.index))
+            .attr('y1', rsiY(div.start.rsi))
+            .attr('x2', xScale(div.end.index))
+            .attr('y2', rsiY(div.end.rsi))
+            .attr('stroke', color)
+            .attr('stroke-width', 2)
+            .attr('stroke-dasharray', dashArray)
+            .attr('opacity', 0.8);
+
+          // Draw on Main Chart
+          const line = chartContent.append('line')
+            .attr('x1', xScale(div.start.index))
+            .attr('y1', yScale(div.start.price))
+            .attr('x2', xScale(div.end.index))
+            .attr('y2', yScale(div.end.price))
+            .attr('stroke', color)
+            .attr('stroke-width', 3) // Thicker for easier clicking
+            .attr('stroke-dasharray', dashArray)
+            .attr('opacity', 0.8)
+            .attr('cursor', 'pointer')
+            .on('click', (event) => {
+              event.stopPropagation();
+              const [mx, my] = d3.pointer(event, containerRef.current);
+              const containerWidth = containerRef.current?.clientWidth || 800;
+              setActiveDivergence({ div, x: mx, y: my, containerWidth });
+            });
+
+          // Label
+          const label = chartContent.append('text')
+            .attr('x', (xScale(div.start.index) + xScale(div.end.index)) / 2)
+            .attr('y', yScale(Math.min(div.start.price, div.end.price)) + (isBullish ? 20 : -20))
+            .attr('text-anchor', 'middle')
+            .attr('class', `text-[9px] font-black uppercase ${isBullish ? 'fill-emerald-500' : 'fill-rose-500'} cursor-pointer select-none`)
+            .text(div.type.replace('Bullish', 'BULL').replace('Bearish', 'BEAR'))
+            .on('click', (event) => {
+              event.stopPropagation();
+              const [mx, my] = d3.pointer(event, containerRef.current);
+              const containerWidth = containerRef.current?.clientWidth || 800;
+              setActiveDivergence({ div, x: mx, y: my, containerWidth });
+            });
+            
+          // Add a transparent hit area for easier clicking
+          chartContent.append('line')
+            .attr('x1', xScale(div.start.index))
+            .attr('y1', yScale(div.start.price))
+            .attr('x2', xScale(div.end.index))
+            .attr('y2', yScale(div.end.price))
+            .attr('stroke', 'transparent')
+            .attr('stroke-width', 10)
+            .attr('cursor', 'pointer')
+            .on('click', (event) => {
+              event.stopPropagation();
+              const [mx, my] = d3.pointer(event, containerRef.current);
+              const containerWidth = containerRef.current?.clientWidth || 800;
+              setActiveDivergence({ div, x: mx, y: my, containerWidth });
+            });
+        });
+
+        // Close tooltip on background click
+        svg.on('click', () => setActiveDivergence(null));
+
+        rsiPane.append('g')
+          .attr('transform', `translate(${width - margin.right}, 0)`)
+          .attr('class', 'text-zinc-400 font-bold text-[10px]')
+          .call(d3.axisRight(rsiY).ticks(2));
+
+        rsiPane.append('text')
+          .attr('x', margin.left)
+          .attr('y', -5)
+          .attr('class', 'text-[10px] font-bold fill-zinc-400')
+          .text('RSI (14)');
+
+        currentY += paneHeights.rsi + gap;
+      }
+
+      if (showMACD) {
+        const macdPane = g.append('g').attr('class', 'sub-pane').attr('transform', `translate(0, ${currentY})`);
+        
+        const macdMin = d3.min(visibleData, (d: any) => Math.min(d.macd || 0, d.macdSignal || 0, d.macdHistogram || 0)) ?? -1;
+        const macdMax = d3.max(visibleData, (d: any) => Math.max(d.macd || 0, d.macdSignal || 0, d.macdHistogram || 0)) ?? 1;
+        const macdY = d3.scaleLinear().domain([macdMin, macdMax]).range([paneHeights.macd, 0]);
+
+        // Histogram
+        const barWidth = Math.max(1, (width / (xEnd - xStart)) * 0.8);
+        visibleData.forEach(d => {
+          const idx = data.indexOf(d);
+          const hist = (d as any).macdHistogram || 0;
+          macdPane.append('rect')
+            .attr('x', xScale(idx) - barWidth / 2)
+            .attr('y', hist >= 0 ? macdY(hist) : macdY(0))
+            .attr('width', barWidth)
+            .attr('height', Math.abs(macdY(hist) - macdY(0)))
+            .attr('fill', hist >= 0 ? 'rgba(16, 185, 129, 0.5)' : 'rgba(239, 68, 68, 0.5)');
+        });
+
+        // MACD Line
+        const macdLine = d3.line<StockData>()
+          .x((d, i) => xScale(data.indexOf(d)))
+          .y(d => macdY((d as any).macd || 0))
+          .curve(d3.curveMonotoneX);
+
+        macdPane.append('path')
+          .datum(data.filter((_, i) => i <= maxIdx))
+          .attr('fill', 'none')
+          .attr('stroke', '#3b82f6')
+          .attr('stroke-width', 1.5)
+          .attr('d', macdLine);
+
+        // Signal Line
+        const signalLine = d3.line<StockData>()
+          .x((d, i) => xScale(data.indexOf(d)))
+          .y(d => macdY((d as any).macdSignal || 0))
+          .curve(d3.curveMonotoneX);
+
+        macdPane.append('path')
+          .datum(data.filter((_, i) => i <= maxIdx))
+          .attr('fill', 'none')
+          .attr('stroke', '#f472b6')
+          .attr('stroke-width', 1.5)
+          .attr('d', signalLine);
+
+        macdPane.append('g')
+          .attr('transform', `translate(${width - margin.right}, 0)`)
+          .attr('class', 'text-zinc-400 font-bold text-[10px]')
+          .call(d3.axisRight(macdY).ticks(3));
+
+        macdPane.append('text')
+          .attr('x', margin.left)
+          .attr('y', -5)
+          .attr('class', 'text-[10px] font-bold fill-zinc-400')
+          .text('MACD (12, 26, 9)');
+
+        currentY += paneHeights.macd + gap;
       }
 
       // Smart S/R Zones and Masking
@@ -965,6 +1262,8 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
     showEMAX,
     showEMA20,
     showEMA50,
+    showRSI,
+    showMACD,
     isInvertedY,
     chartType,
     resetTrigger,
@@ -1130,6 +1429,98 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
         "w-full h-full cursor-crosshair overflow-visible transition-all duration-700",
         isSimulationMode && (isDark ? "bg-rose-950/20" : "bg-rose-100/40")
       )} />
+      {/* Divergence Tooltip */}
+      {activeDivergence && (
+        <div
+          className="absolute z-50 rounded-lg shadow-xl border backdrop-blur-md text-xs overflow-hidden"
+          style={{
+            top: tooltipPos.y,
+            left: tooltipPos.x,
+            backgroundColor: isDark ? 'rgba(24, 24, 27, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+            borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+            color: isDark ? '#fff' : '#000',
+            minWidth: '240px',
+            cursor: isDragging ? 'grabbing' : 'default'
+          }}
+        >
+          {/* Header - Draggable Area */}
+          <div 
+            className="p-2 border-b flex justify-between items-center cursor-grab active:cursor-grabbing bg-opacity-10 bg-gray-500"
+            onMouseDown={handleMouseDown}
+          >
+            <span className={`font-bold uppercase ${activeDivergence.div.type.includes('Bullish') ? 'text-emerald-500' : 'text-rose-500'}`}>
+              {activeDivergence.div.type}
+            </span>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setActiveDivergence(null); }}
+              className="hover:bg-gray-500/20 rounded p-0.5"
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="p-3 space-y-2">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px]">
+              <span className="opacity-60">Entry:</span>
+              <span className="font-mono text-right">{activeDivergence.div.targets.entry.toFixed(2)}</span>
+              
+              <span className="opacity-60">Stop Loss:</span>
+              <span className="font-mono text-right text-rose-500">{activeDivergence.div.targets.stopLoss.toFixed(2)}</span>
+            </div>
+
+            <div className="h-px bg-gray-500/20 my-1" />
+            
+            <div className="space-y-1">
+              <div className="text-[10px] font-semibold opacity-70 mb-1">Targets</div>
+              
+              {/* Target 1: Neckline */}
+              <div className="flex justify-between items-center text-[10px]">
+                <span className="opacity-60">1. Neckline:</span>
+                <span className="font-mono text-emerald-500">{activeDivergence.div.targets.neckline.toFixed(2)}</span>
+              </div>
+
+              {/* Target 2: Measured Move */}
+              <div className="flex justify-between items-center text-[10px]">
+                <span className="opacity-60">2. 100% Move:</span>
+                <span className="font-mono text-emerald-500">{activeDivergence.div.targets.measuredMove.toFixed(2)}</span>
+              </div>
+
+              {/* Target 3: Fibo 161.8% */}
+              <div className="flex justify-between items-center text-[10px]">
+                <span className="opacity-60">3. Fibo 161.8%:</span>
+                <span className="font-mono text-emerald-500">{activeDivergence.div.targets.fibo161.toFixed(2)}</span>
+              </div>
+
+              {/* Target 4: Fibo 261.8% */}
+              <div className="flex justify-between items-center text-[10px]">
+                <span className="opacity-60">4. Fibo 261.8%:</span>
+                <span className="font-mono text-emerald-500">{activeDivergence.div.targets.fibo261.toFixed(2)}</span>
+              </div>
+            </div>
+
+            {/* Volume Confirmation */}
+            <div className="mt-2 pt-2 border-t border-gray-500/20">
+               <div className="flex items-center gap-2 text-[10px]">
+                  <span className="opacity-60">Volume Conf:</span>
+                  {activeDivergence.div.volumeConfirmation ? (
+                    <span className="text-emerald-500 font-bold flex items-center gap-1">
+                      YES <span className="text-[8px]">(Lower Vol)</span>
+                    </span>
+                  ) : (
+                    <span className="text-amber-500 font-bold flex items-center gap-1">
+                      NO <span className="text-[8px]">(Higher Vol)</span>
+                    </span>
+                  )}
+               </div>
+            </div>
+
+            <div className="text-[9px] opacity-40 italic mt-1 text-center">
+              Drag header to move • Click X to close
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 });

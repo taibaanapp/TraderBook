@@ -3,6 +3,10 @@ import { Activity, Target, ShieldAlert, CheckCircle2, XCircle, Clock, TrendingUp
 import { cn } from '../utils/cn';
 import { ReversalAnalysis } from '../services/reversalService';
 import { formatCurrency } from '../utils/formatters';
+import { TRANSLATIONS } from '../constants/translations';
+
+const t_rev = TRANSLATIONS.TH.reversal;
+const common = TRANSLATIONS.TH.common;
 
 interface ReversalBoxProps {
   symbol: string;
@@ -117,7 +121,7 @@ export const ReversalBox: React.FC<ReversalBoxProps> = ({ symbol, analysis, curr
             {/* Score Card */}
             <div className={cn("p-6 rounded-2xl border flex flex-col items-center justify-center text-center", getScoreBg(analysis.score))}>
               <p className={cn("text-[11px] font-black uppercase tracking-[0.2em] mb-2", getScoreColor(analysis.score))}>
-                Reversal Probability
+                {common.confidence}
               </p>
               <div className="flex items-center gap-3 mb-2">
                 <Target className={cn("w-8 h-8", getScoreColor(analysis.score))} />
@@ -139,7 +143,7 @@ export const ReversalBox: React.FC<ReversalBoxProps> = ({ symbol, analysis, curr
             )}>
               <div className="flex items-center gap-2 mb-4">
                 <ShieldAlert className="w-5 h-5 text-rose-500" />
-                <h4 className={cn("text-sm font-black uppercase tracking-widest", isDark ? "text-zinc-300" : "text-zinc-700")}>Technical Stop Loss</h4>
+                <h4 className={cn("text-sm font-black uppercase tracking-widest", isDark ? "text-zinc-300" : "text-zinc-700")}>{common.stop_loss}</h4>
               </div>
               <p className={cn("text-4xl font-black tracking-tighter mb-2", isDark ? "text-zinc-100" : "text-zinc-900")}>
                 {formatCurrency(analysis.stopLoss, currency)}

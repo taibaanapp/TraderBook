@@ -1,4 +1,8 @@
 import { StockData } from '../types';
+import { TRANSLATIONS } from '../constants/translations';
+
+const t = TRANSLATIONS.TH.reversal;
+const common = TRANSLATIONS.TH.common;
 
 export interface ReversalCondition {
   name: string;
@@ -136,12 +140,12 @@ export function analyzeReversal(data: StockData[]): ReversalAnalysis {
   const isAboveEma20 = current.close > ema20[lastIdx];
   if (isAboveEma20) {
     score += 25;
-    reasons.push("ราคาปิดยืนเหนือ EMA 20 (+25)");
+    reasons.push(`${t.above_ema20} (+25)`);
   }
   conditions.push({
-    name: "ราคาปิดยืนเหนือ EMA 20",
+    name: t.above_ema20,
     passed: isAboveEma20,
-    reason: isAboveEma20 ? "ราคาปัจจุบันสูงกว่าเส้นค่าเฉลี่ย 20 วัน" : "ราคายังอยู่ใต้เส้นค่าเฉลี่ย 20 วัน",
+    reason: isAboveEma20 ? t.above_ema20_desc : t.below_ema20_desc,
     score: 25
   });
 
@@ -164,13 +168,13 @@ export function analyzeReversal(data: StockData[]): ReversalAnalysis {
     if (lows[lastLocalLowIdx] < lows[prevLocalLowIdx] && rsi[lastLocalLowIdx] > rsi[prevLocalLowIdx]) {
       isDivergence = true;
       score += 20;
-      reasons.push("เกิด Bullish Divergence (+20)");
+      reasons.push(`${t.bullish_divergence} (+20)`);
     }
   }
   conditions.push({
-    name: "Bullish Divergence",
+    name: t.bullish_divergence,
     passed: isDivergence,
-    reason: isDivergence ? "ราคาทำ Low ใหม่ แต่ RSI ยกตัวสูงขึ้น" : "ไม่พบสัญญาณขัดแย้งเชิงบวก (Divergence) ในรอบ 20 วัน",
+    reason: isDivergence ? t.bullish_divergence_desc : t.no_divergence_desc,
     score: 20
   });
 
@@ -179,12 +183,12 @@ export function analyzeReversal(data: StockData[]): ReversalAnalysis {
   const isBreakout = current.close > fiveDayHigh;
   if (isBreakout) {
     score += 20;
-    reasons.push("ราคา Breakout ทะลุ High 5 วัน (+20)");
+    reasons.push(`${t.breakout_5d} (+20)`);
   }
   conditions.push({
-    name: "Breakout High 5 วัน",
+    name: t.breakout_5d,
     passed: isBreakout,
-    reason: isBreakout ? "ราคาทะลุจุดสูงสุดของ 5 วันที่ผ่านมาได้สำเร็จ" : "ราคายังไม่สามารถทะลุจุดสูงสุดในรอบ 5 วันได้",
+    reason: isBreakout ? t.breakout_5d_desc : t.no_breakout_5d_desc,
     score: 20
   });
 
@@ -193,12 +197,12 @@ export function analyzeReversal(data: StockData[]): ReversalAnalysis {
   const isVolumeSurge = current.close > current.open && current.volume > volMA15;
   if (isVolumeSurge) {
     score += 15;
-    reasons.push("Volume Surge ในวันที่ราคาบวก (+15)");
+    reasons.push(`${t.volume_surge} (+15)`);
   }
   conditions.push({
-    name: "Volume Surge (แท่งเขียว)",
+    name: t.volume_surge,
     passed: isVolumeSurge,
-    reason: isVolumeSurge ? "ปริมาณการซื้อขายสูงกว่าค่าเฉลี่ย 15 วัน และราคาปิดบวก" : "ปริมาณการซื้อขายยังไม่โดดเด่น หรือราคาไม่ได้ปิดบวก",
+    reason: isVolumeSurge ? t.volume_surge_desc : t.no_volume_surge_desc,
     score: 15
   });
 
@@ -273,7 +277,6 @@ export function analyzeReversal(data: StockData[]): ReversalAnalysis {
     
     reasons.push(`เกิดแท่งเทียน ${patternName} (+10)`);
   }
-
   if (hasBearishPattern) {
     score -= 10;
     let patternName = "Bearish Pattern";
@@ -283,24 +286,22 @@ export function analyzeReversal(data: StockData[]): ReversalAnalysis {
     else if (isGravestoneDoji) patternName = "Gravestone Doji";
     reasons.push(`ระวัง: เกิดแท่งเทียน ${patternName} (-10)`);
   }
-
   conditions.push({
-    name: "Candlestick Pattern",
+    name: t.candlestick_pattern,
     passed: hasPattern || hasBearishPattern,
-    reason: hasPattern ? "พบรูปแบบแท่งเทียนกลับตัวขาขึ้น" : (hasBearishPattern ? "พบรูปแบบแท่งเทียนกลับตัวขาลง" : "ไม่พบรูปแบบแท่งเทียนที่ชัดเจน"),
+    reason: hasPattern ? t.bullish_pattern_desc : (hasBearishPattern ? t.bearish_pattern_desc : t.no_pattern_desc),
     score: hasPattern ? 10 : (hasBearishPattern ? -10 : 0)
   });
-
   // 6. (10 คะแนน) เส้น EMA 20 เริ่มหักหัวขึ้น (Slope Change)
   const isSlopeUp = ema20[lastIdx] > ema20[lastIdx - 1] && ema20[lastIdx - 1] <= ema20[lastIdx - 2];
   if (isSlopeUp) {
     score += 10;
-    reasons.push("เส้น EMA 20 เริ่มหักหัวขึ้น (+10)");
+    reasons.push(`${t.ema20_slope_up} (+10)`);
   }
   conditions.push({
-    name: "EMA 20 หักหัวขึ้น",
+    name: t.ema20_slope_up,
     passed: isSlopeUp,
-    reason: isSlopeUp ? "เส้นค่าเฉลี่ย 20 วันเริ่มเปลี่ยนความชันเป็นบวก" : "เส้นค่าเฉลี่ย 20 วันยังคงชี้ลงหรือทรงตัว",
+    reason: isSlopeUp ? t.ema20_slope_up_desc : t.ema20_no_slope_up_desc,
     score: 10
   });
 

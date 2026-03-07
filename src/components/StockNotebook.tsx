@@ -3,6 +3,9 @@ import { StickyNote, Plus, Trash2, Clock, DollarSign } from 'lucide-react';
 import { StockNote } from '../types';
 import { formatCurrency } from '../utils/formatters';
 import { cn } from '../utils/cn';
+import { TRANSLATIONS } from '../constants/translations';
+
+const t = TRANSLATIONS.TH.notebook;
 
 interface StockNotebookProps {
   symbol: string;
@@ -91,7 +94,7 @@ export const StockNotebook: React.FC<StockNotebookProps> = ({ symbol, currentPri
       )}>
         <div className="flex items-center gap-3">
           <StickyNote className={cn("w-5 h-5", isDark ? "text-zinc-100" : "text-zinc-900")} />
-          <h3 className={cn("text-xs font-black uppercase tracking-widest", isDark ? "text-zinc-100" : "text-zinc-900")}>CrossVision Notebook</h3>
+          <h3 className={cn("text-xs font-black uppercase tracking-widest", isDark ? "text-zinc-100" : "text-zinc-900")}>{t.title}</h3>
         </div>
         <button
           onClick={() => setIsAdding(!isAdding)}
@@ -111,13 +114,13 @@ export const StockNotebook: React.FC<StockNotebookProps> = ({ symbol, currentPri
             isDark ? "bg-zinc-800 border-zinc-700" : "bg-zinc-50 border-zinc-200"
           )}>
             <div className="flex items-center justify-between text-[11px] font-black text-zinc-400 uppercase tracking-widest">
-              <span>New Note</span>
+              <span>{t.new_note}</span>
               <span>{formatCurrency(currentPrice, currency)}</span>
             </div>
             <textarea
               value={newNoteContent}
               onChange={(e) => setNewNoteContent(e.target.value)}
-              placeholder="Write your thoughts..."
+              placeholder={t.placeholder}
               className={cn(
                 "w-full rounded-xl p-4 text-base outline-none transition-all min-h-[120px] resize-none shadow-inner",
                 isDark ? "bg-zinc-950 border-zinc-700 text-zinc-100 focus:border-zinc-500" : "bg-white border-zinc-200 text-zinc-900 focus:border-zinc-900"
@@ -132,7 +135,7 @@ export const StockNotebook: React.FC<StockNotebookProps> = ({ symbol, currentPri
                   isDark ? "bg-zinc-100 text-zinc-900 hover:bg-zinc-200" : "bg-zinc-900 text-white hover:bg-zinc-800"
                 )}
               >
-                {loading ? 'Saving...' : 'Save Note'}
+                {loading ? t.saving : t.save}
               </button>
               <button
                 onClick={() => setIsAdding(false)}
@@ -141,7 +144,7 @@ export const StockNotebook: React.FC<StockNotebookProps> = ({ symbol, currentPri
                   isDark ? "border-zinc-700 text-zinc-400 hover:bg-zinc-700" : "border-zinc-200 text-zinc-500 hover:bg-zinc-100"
                 )}
               >
-                Cancel
+                {t.cancel}
               </button>
             </div>
           </div>
@@ -152,8 +155,8 @@ export const StockNotebook: React.FC<StockNotebookProps> = ({ symbol, currentPri
             <div className={cn("w-16 h-16 rounded-3xl flex items-center justify-center mb-4 shadow-sm", isDark ? "bg-zinc-800" : "bg-zinc-50")}>
               <StickyNote className={cn("w-8 h-8", isDark ? "text-zinc-700" : "text-zinc-200")} />
             </div>
-            <p className="text-xs font-black text-zinc-400 uppercase tracking-widest">No notes yet</p>
-            <p className="text-xs text-zinc-500 mt-2 italic font-medium">Record your analysis for {symbol}</p>
+            <p className="text-xs font-black text-zinc-400 uppercase tracking-widest">{t.no_notes}</p>
+            <p className="text-xs text-zinc-500 mt-2 italic font-medium">{t.record_analysis} {symbol}</p>
           </div>
         ) : (
           notes.map((note) => (
@@ -169,7 +172,7 @@ export const StockNotebook: React.FC<StockNotebookProps> = ({ symbol, currentPri
                   </div>
                   <div className="flex items-center gap-2 text-[11px] font-black text-emerald-600 uppercase tracking-[0.1em]">
                     <DollarSign className="w-3.5 h-3.5" />
-                    Price: {formatCurrency(note.price, currency)}
+                    {t.price}: {formatCurrency(note.price, currency)}
                   </div>
                 </div>
                 <button

@@ -34,15 +34,19 @@ import { StockProfile } from './components/StockProfile';
 import { ReversalBox } from './components/ReversalBox';
 import { SettingsModal } from './components/SettingsModal';
 import { ReversalDashboard } from './components/ReversalDashboard';
+import { AdminPanel } from './components/AdminPanel';
 import { Logo } from './components/Logo';
 import { MarketTicker } from './components/MarketTicker';
+import { SimTradePanel } from './components/SimTradePanel';
 import { calculateCompositeMoneyFlow, calculateVWAP, calculateEMA, calculateRSI, calculateMACD } from './services/indicatorService';
 import { analyzeReversal } from './services/reversalService';
 import { simulateGoldenCross } from './services/simulationService';
 import { calculateSmartSR, SRZone } from './services/smartSRService';
 import { generateScenario, ScenarioResult } from './services/scenarioService';
+import { getStockProfile, getGeminiNewsAnalysis } from './services/geminiService';
 import { getStockData, saveStockData } from './services/storageService';
 import { getFlag, formatCurrency } from './utils/formatters';
+import { TRANSLATIONS } from './constants/translations';
 import { cn } from './utils/cn';
 import { StockData, ApiResponse, Transaction, PortfolioSummary } from './types';
 
@@ -57,7 +61,7 @@ export default function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [symbol, setSymbol] = useState('AAPL');
   const [searchInput, setSearchInput] = useState('AAPL');
-  const [interval, setInterval] = useState('1d');
+  const [interval, setChartInterval] = useState('1d');
   const [stockData, setStockData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +71,8 @@ export default function App() {
   const [showEMAX, setShowEMAX] = useState(false);
   const [showEMA20, setShowEMA20] = useState(false);
   const [showEMA50, setShowEMA50] = useState(false);
+  const [showRSI, setShowRSI] = useState(false);
+  const [showMACD, setShowMACD] = useState(false);
   const [isInvertedY, setIsInvertedY] = useState(false);
   const [isSimulationMode, setIsSimulationMode] = useState(false);
   const [simulationRate, setSimulationRate] = useState(-1.5);
@@ -109,6 +115,30 @@ export default function App() {
   // Modal states
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
+  const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+  const [adminClickCount, setAdminClickCount] = useState(0);
+
+  const [showSimTrade, setShowSimTrade] = useState(false);
+  const [isStandaloneSimTrade, setIsStandaloneSimTrade] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('mode') === 'simtrade') {
+      setIsStandaloneSimTrade(true);
+      const urlSymbol = params.get('symbol');
+      const urlInterval = params.get('interval');
+      if (urlSymbol) {
+        setSymbol(urlSymbol);
+        setSearchInput(urlSymbol);
+      }
+      if (urlInterval) setChartInterval(urlInterval);
+    }
+  }, []);
+
+  const handleOpenSimTrade = () => {
+    const url = `${window.location.origin}${window.location.pathname}?mode=simtrade&symbol=${symbol}&interval=${interval}`;
+    window.open(url, '_blank');
+  };
 
   // Smart S/R State
   const [isSmartSRMode, setIsSmartSRMode] = useState(false);
@@ -190,18 +220,8 @@ export default function App() {
     if (!isAiInsightEnabled) return;
     setProfileLoading(true);
     try {
-      const query = new URLSearchParams();
-      if (exchangeName) query.append('exchange', exchangeName);
-      
-      const response = await fetch(`/api/stock/profile/${targetSymbol}?${query.toString()}`);
-      if (response.ok) {
-        const data = await response.json();
-        setStockProfile(data);
-      } else if (response.status === 429) {
-        const data = await response.json();
-        console.warn(data.error);
-        setStockProfile(null);
-      }
+      const data = await getStockProfile(targetSymbol, exchangeName);
+      setStockProfile(data);
     } catch (err) {
       console.error('Failed to fetch stock profile:', err);
     } finally {
@@ -246,22 +266,9 @@ export default function App() {
     setGeminiTargetDate(new Date(data.date).toISOString().split('T')[0]);
 
     try {
-      const response = await fetch('/api/gemini/news', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          symbol,
-          date: new Date(data.date).toISOString().split('T')[0]
-        })
-      });
-
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Failed to fetch Gemini analysis');
-      }
-
-      const result = await response.json();
+      const result = await getGeminiNewsAnalysis(symbol, new Date(data.date).toISOString().split('T')[0]);
       setGeminiAnalysis(result);
+      fetchGeminiUsage(); // Still fetch usage from backend if needed
     } catch (err: any) {
       setGeminiError(err.message);
     } finally {
@@ -315,6 +322,16 @@ export default function App() {
     const savedEMA50 = localStorage.getItem('showEMA50');
     if (savedEMA50 !== null) {
       setShowEMA50(savedEMA50 === 'true');
+    }
+
+    const savedRSI = localStorage.getItem('showRSI');
+    if (savedRSI !== null) {
+      setShowRSI(savedRSI === 'true');
+    }
+
+    const savedMACD = localStorage.getItem('showMACD');
+    if (savedMACD !== null) {
+      setShowMACD(savedMACD === 'true');
     }
 
     const savedInvertedY = localStorage.getItem('isInvertedY');
@@ -408,6 +425,14 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('showEMA50', String(showEMA50));
   }, [showEMA50]);
+
+  useEffect(() => {
+    localStorage.setItem('showRSI', String(showRSI));
+  }, [showRSI]);
+
+  useEffect(() => {
+    localStorage.setItem('showMACD', String(showMACD));
+  }, [showMACD]);
 
   useEffect(() => {
     localStorage.setItem('isInvertedY', String(isInvertedY));
@@ -791,6 +816,20 @@ export default function App() {
     return STOCK_LIST.find(s => s.symbol === symbol);
   }, [symbol]);
 
+  if (isStandaloneSimTrade) {
+    return (
+      <SimTradePanel
+        symbol={symbol}
+        interval={interval}
+        data={stockData?.data || []}
+        loading={loading}
+        error={error}
+        theme={theme}
+        isStandalone={true}
+      />
+    );
+  }
+
   if (!isDesktop) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-8 text-center selection:bg-rose-500 selection:text-white">
@@ -833,7 +872,18 @@ export default function App() {
         theme === 'dark' ? "bg-[#1e293b] border-zinc-800" : "bg-white border-zinc-200"
       )}>
         <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-10 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div 
+            className="flex items-center gap-3 cursor-pointer" 
+            onClick={() => {
+              setAdminClickCount(prev => {
+                if (prev >= 4) {
+                  setIsAdminPanelOpen(true);
+                  return 0;
+                }
+                return prev + 1;
+              });
+            }}
+          >
             <Logo size={40} />
             <div className="hidden sm:block">
               <h1 className="text-xl font-black tracking-tight">CrossVision</h1>
@@ -849,7 +899,7 @@ export default function App() {
                 value={searchInput}
                 onChange={(e) => { setSearchInput(e.target.value); setShowSuggestions(true); }}
                 onFocus={() => setShowSuggestions(true)}
-                placeholder="Search symbol (e.g. AAPL, PTT.BK)"
+                placeholder={TRANSLATIONS.TH.common.search_placeholder}
                 className={cn(
                   "w-full rounded-xl pl-10 pr-10 py-2 text-sm transition-all outline-none border",
                   theme === 'dark' 
@@ -889,14 +939,14 @@ export default function App() {
                           : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
                       )}
                     >
-                      {m === 'ALL' ? 'ทั้งหมด' : (m === 'TH' ? 'หุ้นไทย 🇹🇭' : 'หุ้นเมกา 🇺🇸')}
+                      {m === 'ALL' ? TRANSLATIONS.TH.common.all : (m === 'TH' ? TRANSLATIONS.TH.common.th_stocks : TRANSLATIONS.TH.common.us_stocks)}
                     </button>
                   ))}
                 </div>
                 <div className="max-h-[400px] overflow-y-auto">
                   {suggestions.length === 0 ? (
                     <div className="px-4 py-8 text-center text-zinc-400 text-sm italic">
-                      ไม่พบรายชื่อหุ้นที่ค้นหา
+                      {TRANSLATIONS.TH.common.search_not_found}
                     </div>
                   ) : suggestions.map((s) => (
                     <button
@@ -948,6 +998,18 @@ export default function App() {
               </p>
             </div>
             <div className="flex items-center gap-2">
+              <button
+                onClick={handleOpenSimTrade}
+                className={cn(
+                  "p-2.5 rounded-2xl border transition-all shadow-sm hover:shadow-md active:scale-95",
+                  theme === 'dark' 
+                    ? "bg-zinc-800 border-zinc-700 text-indigo-400 hover:bg-zinc-700" 
+                    : "bg-white border-zinc-200 text-indigo-500 hover:bg-zinc-50"
+                )}
+                title="SimTrade AI"
+              >
+                <TrendingUp className="w-5 h-5" />
+              </button>
               <button
                 onClick={() => setIsDashboardOpen(true)}
                 className={cn(
@@ -1133,7 +1195,7 @@ export default function App() {
               {showChartControls && (
                 <ChartControls 
                   interval={interval}
-                  setInterval={setInterval}
+                  setInterval={setChartInterval}
                   chartType={chartType}
                   setChartType={setChartType}
                   showVWAP={showVWAP}
@@ -1148,6 +1210,10 @@ export default function App() {
                   setShowEMA20={setShowEMA20}
                   showEMA50={showEMA50}
                   setShowEMA50={setShowEMA50}
+                  showRSI={showRSI}
+                  setShowRSI={setShowRSI}
+                  showMACD={showMACD}
+                  setShowMACD={setShowMACD}
                   isInvertedY={isInvertedY}
                   setIsInvertedY={setIsInvertedY}
                   isLogScale={isLogScale}
@@ -1164,6 +1230,8 @@ export default function App() {
                     setIsSmartSRMode(false);
                   }}
                   onRefresh={() => fetchData(symbol, interval, true)}
+                  isFullscreen={isFullscreen}
+                  onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
                   theme={theme}
                 />
               )}
@@ -1172,8 +1240,57 @@ export default function App() {
               <div className={cn(
                 "rounded-2xl border p-6 h-[500px] relative overflow-hidden group transition-colors duration-300",
                 theme === 'dark' ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200",
-                isFullscreen && "fixed inset-0 z-[100] h-screen w-screen rounded-none p-0"
+                isFullscreen && "fixed inset-0 z-[100] h-screen w-screen rounded-none p-0 flex flex-col"
               )}>
+                {isFullscreen && (
+                  <div className="absolute top-4 left-4 right-4 z-[110]">
+                    <ChartControls 
+                      interval={interval}
+                      setInterval={setChartInterval}
+                      chartType={chartType}
+                      setChartType={setChartType}
+                      showVWAP={showVWAP}
+                      setShowVWAP={setShowVWAP}
+                      showOBV={showOBV}
+                      setShowOBV={setShowOBV}
+                      showVolume={showVolume}
+                      setShowVolume={setShowVolume}
+                      showEMAX={showEMAX}
+                      setShowEMAX={setShowEMAX}
+                      showEMA20={showEMA20}
+                      setShowEMA20={setShowEMA20}
+                      showEMA50={showEMA50}
+                      setShowEMA50={setShowEMA50}
+                      showRSI={showRSI}
+                      setShowRSI={setShowRSI}
+                      showMACD={showMACD}
+                      setShowMACD={setShowMACD}
+                      isInvertedY={isInvertedY}
+                      setIsInvertedY={setIsInvertedY}
+                      isLogScale={isLogScale}
+                      setIsLogScale={setIsLogScale}
+                      isSimulationMode={isSimulationMode}
+                      setIsSimulationMode={setIsSimulationMode}
+                      isSmartSRMode={isSmartSRMode}
+                      setIsSmartSRMode={setIsSmartSRMode}
+                      isScenarioMode={isScenarioMode}
+                      onToggleScenario={handleScenarioToggle}
+                      onReset={() => {
+                        setResetTrigger(prev => prev + 1);
+                        setIsSimulationMode(false);
+                        setIsSmartSRMode(false);
+                      }}
+                      onRefresh={() => fetchData(symbol, interval, true)}
+                      isFullscreen={isFullscreen}
+                      onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
+                      onSymbolChange={(sym) => {
+                        setSymbol(sym);
+                        setSearchInput(sym);
+                      }}
+                      theme={theme}
+                    />
+                  </div>
+                )}
                 {loading && !isFullscreen && (
                   <div className={cn(
                     "absolute inset-0 backdrop-blur-[2px] z-20 flex items-center justify-center",
@@ -1186,7 +1303,7 @@ export default function App() {
                   </div>
                 )}
                 
-                <div className="h-full w-full relative">
+                <div className={cn("h-full w-full relative", isFullscreen && "pt-20")}>
                   <TradingChart 
                     symbol={symbol}
                     data={processedData} 
@@ -1196,6 +1313,8 @@ export default function App() {
                     showEMAX={showEMAX}
                     showEMA20={showEMA20}
                     showEMA50={showEMA50}
+                    showRSI={showRSI}
+                    showMACD={showMACD}
                     isInvertedY={isInvertedY}
                     chartType={chartType}
                     onHover={setHoveredData}
@@ -1243,19 +1362,19 @@ export default function App() {
                           <div className="flex items-center gap-3 mb-1">
                             <Brain className="w-4 h-4 text-rose-500" />
                             <span className={cn("text-xs font-bold uppercase tracking-widest", theme === 'dark' ? "text-zinc-300" : "text-zinc-600")}>
-                              หาข่าวด้วย Gemini
+                              {TRANSLATIONS.TH.gemini.analyze_with_gemini}
                             </span>
                           </div>
                           {geminiUsage && (
                             <div className="flex items-center justify-between pl-7">
-                              <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">โควต้าวันนี้</span>
+                              <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">{TRANSLATIONS.TH.gemini.daily_quota}</span>
                               <span className={cn(
                                 "text-[9px] font-black px-1.5 py-0.5 rounded",
                                 geminiUsage.count >= geminiUsage.limit 
                                   ? "bg-rose-500/10 text-rose-500" 
                                   : "bg-emerald-500/10 text-emerald-500"
                               )}>
-                                เหลือ {geminiUsage.limit - geminiUsage.count} / {geminiUsage.limit}
+                                {TRANSLATIONS.TH.gemini.remaining} {geminiUsage.limit - geminiUsage.count} / {geminiUsage.limit}
                               </span>
                             </div>
                           )}
@@ -1714,6 +1833,22 @@ export default function App() {
         onClose={() => setIsDashboardOpen(false)} 
         theme={theme}
       />
+
+      <AdminPanel
+        isOpen={isAdminPanelOpen}
+        onClose={() => setIsAdminPanelOpen(false)}
+        theme={theme}
+      />
+
+      {showSimTrade && stockData && (
+        <SimTradePanel
+          symbol={symbol}
+          interval={interval}
+          data={stockData.data}
+          onClose={() => setShowSimTrade(false)}
+          theme={theme}
+        />
+      )}
     </div>
   );
 }

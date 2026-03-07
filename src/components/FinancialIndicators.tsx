@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Activity, ShieldCheck, DollarSign, BarChart3, Info, ChevronRight, ChevronDown } from 'lucide-react';
 import { cn } from '../utils/cn';
+import { TRANSLATIONS } from '../constants/translations';
+
+const t = TRANSLATIONS.TH.financials;
 
 interface FinancialData {
   annual: any[];
@@ -103,7 +106,7 @@ export const FinancialIndicators: React.FC<FinancialIndicatorsProps> = ({ symbol
                     isBetter ? "text-emerald-500" : "text-rose-500"
                   )}>
                     {isBetter ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                    {isBetter ? 'Improved' : 'Declined'}
+                    {isBetter ? t.improved : t.declined}
                   </span>
                 )}
               </div>
@@ -181,8 +184,8 @@ export const FinancialIndicators: React.FC<FinancialIndicatorsProps> = ({ symbol
             <BarChart3 className={cn("w-6 h-6", isDark ? "text-zinc-900" : "text-white")} />
           </div>
           <div className="text-left">
-            <h3 className={cn("font-extrabold text-xl tracking-tight", isDark ? "text-zinc-100" : "text-zinc-900")}>CrossVision Financials</h3>
-            <p className="text-xs font-bold uppercase tracking-[0.15em] text-zinc-400">{symbol} Fundamentals</p>
+            <h3 className={cn("font-extrabold text-xl tracking-tight", isDark ? "text-zinc-100" : "text-zinc-900")}>{t.title}</h3>
+            <p className="text-xs font-bold uppercase tracking-[0.15em] text-zinc-400">{t.subtitle} {symbol}</p>
           </div>
         </div>
         <div className={cn(
@@ -215,7 +218,7 @@ export const FinancialIndicators: React.FC<FinancialIndicatorsProps> = ({ symbol
                           : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
                       )}
                     >
-                      Annual
+                      {t.annual}
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); setView('quarterly'); }}
@@ -226,7 +229,7 @@ export const FinancialIndicators: React.FC<FinancialIndicatorsProps> = ({ symbol
                           : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
                       )}
                     >
-                      Quarterly
+                      {t.quarterly}
                     </button>
                   </div>
                 </div>
@@ -235,7 +238,7 @@ export const FinancialIndicators: React.FC<FinancialIndicatorsProps> = ({ symbol
               {/* Quality Overview Cards */}
               <div className={cn("grid grid-cols-1 md:grid-cols-4 border-b", isDark ? "border-zinc-800" : "border-zinc-100")}>
                 <div className={cn("p-6 border-r", isDark ? "border-zinc-800" : "border-zinc-100")}>
-                  <p className="text-[11px] font-black text-zinc-400 uppercase tracking-widest mb-1">Quality Score</p>
+                  <p className="text-[11px] font-black text-zinc-400 uppercase tracking-widest mb-1">{t.quality_score}</p>
                   <div className="flex items-end gap-2">
                     <span className={cn(
                       "text-3xl font-black",
@@ -244,12 +247,12 @@ export const FinancialIndicators: React.FC<FinancialIndicatorsProps> = ({ symbol
                     <span className="text-xs font-bold text-zinc-400 mb-1">/ 100</span>
                   </div>
                   <p className="text-[11px] font-black text-zinc-400 uppercase mt-1">
-                    {qualityScore > 70 ? "High Quality" : qualityScore > 40 ? "Average Quality" : "Poor Quality"}
+                    {qualityScore > 70 ? t.high_quality : qualityScore > 40 ? t.average_quality : t.poor_quality}
                   </p>
                 </div>
 
                 <div className={cn("p-6 border-r", isDark ? "border-zinc-800" : "border-zinc-100")}>
-                  <p className="text-[11px] font-black text-zinc-400 uppercase tracking-widest mb-1">Fair Value (Est.)</p>
+                  <p className="text-[11px] font-black text-zinc-400 uppercase tracking-widest mb-1">{t.fair_value}</p>
                   <div className="flex items-end gap-2">
                     <span className={cn("text-2xl font-black", isDark ? "text-zinc-100" : "text-zinc-900")}>
                       {data.valuation?.grahamNumber 
@@ -260,22 +263,22 @@ export const FinancialIndicators: React.FC<FinancialIndicatorsProps> = ({ symbol
                     </span>
                   </div>
                   <p className="text-[11px] font-black text-zinc-400 uppercase mt-1">
-                    {data.valuation?.grahamNumber ? "Graham Number" : data.valuation?.peFairValue ? "PE-Based (15x)" : "Intrinsic Estimate"}
+                    {data.valuation?.grahamNumber ? t.graham_number : data.valuation?.peFairValue ? t.pe_based : t.intrinsic_estimate}
                   </p>
                 </div>
 
                 <div className={cn("p-6 border-r", isDark ? "border-zinc-800" : "border-zinc-100")}>
-                  <p className="text-[11px] font-black text-zinc-400 uppercase tracking-widest mb-1">Analyst Target</p>
+                  <p className="text-[11px] font-black text-zinc-400 uppercase tracking-widest mb-1">{t.analyst_target}</p>
                   <div className="flex items-end gap-2">
                     <span className={cn("text-2xl font-black", isDark ? "text-zinc-100" : "text-zinc-900")}>
                       {data.valuation?.targetPrice ? data.valuation.targetPrice.toLocaleString(undefined, { maximumFractionDigits: 2 }) : 'N/A'}
                     </span>
                   </div>
-                  <p className="text-[11px] font-black text-zinc-400 uppercase mt-1">Mean Price Target</p>
+                  <p className="text-[11px] font-black text-zinc-400 uppercase mt-1">{t.mean_price_target}</p>
                 </div>
 
                 <div className="p-6">
-                  <p className="text-[11px] font-black text-zinc-400 uppercase tracking-widest mb-1">Recommendation</p>
+                  <p className="text-[11px] font-black text-zinc-400 uppercase tracking-widest mb-1">{t.recommendation}</p>
                   <div className="flex items-end gap-2">
                     <span className={cn(
                       "text-xl font-black uppercase",
@@ -284,7 +287,7 @@ export const FinancialIndicators: React.FC<FinancialIndicatorsProps> = ({ symbol
                       {data.stats.recommendation || 'N/A'}
                     </span>
                   </div>
-                  <p className="text-[11px] font-black text-zinc-400 uppercase mt-1">Market Consensus</p>
+                  <p className="text-[11px] font-black text-zinc-400 uppercase mt-1">{t.market_consensus}</p>
                 </div>
               </div>
 
@@ -296,7 +299,7 @@ export const FinancialIndicators: React.FC<FinancialIndicatorsProps> = ({ symbol
                         "py-5 px-6 text-left text-[11px] font-black uppercase tracking-[0.2em] sticky left-0 z-10 border-r",
                         isDark ? "bg-zinc-900 text-zinc-500 border-zinc-800" : "bg-zinc-50/50 text-zinc-400 border-zinc-100"
                       )}>
-                        Metric / Period
+                        {t.metric_period}
                       </th>
                       {processedPeriodsForTable.map((p: any, i: number) => (
                         <th key={i} className={cn("py-5 px-8 text-right text-[11px] font-black uppercase tracking-[0.2em]", isDark ? "text-zinc-100" : "text-zinc-900")}>
@@ -308,32 +311,32 @@ export const FinancialIndicators: React.FC<FinancialIndicatorsProps> = ({ symbol
                   <tbody>
                     <tr className={isDark ? "bg-zinc-800/20" : "bg-zinc-100/30"}>
                       <td colSpan={processedPeriodsForTable.length + 1} className="py-3 px-6 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-                        Profitability Ratios
+                        {t.profitability}
                       </td>
                     </tr>
-                    <TableRow label="Revenue (M)" keyName="revenue" precision={0} />
-                    <TableRow label="Net Income (M)" keyName="netIncome" precision={0} />
-                    <TableRow label="ROE (%)" keyName="roe" unit="%" />
-                    <TableRow label="Net Margin (%)" keyName="netMargin" unit="%" />
+                    <TableRow label={t.revenue} keyName="revenue" precision={0} />
+                    <TableRow label={t.net_income} keyName="netIncome" precision={0} />
+                    <TableRow label={t.roe} keyName="roe" unit="%" />
+                    <TableRow label={t.net_margin} keyName="netMargin" unit="%" />
                     
                     <tr className={isDark ? "bg-zinc-800/20" : "bg-zinc-100/30"}>
                       <td colSpan={processedPeriodsForTable.length + 1} className="py-3 px-6 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-                        Liquidity Ratios
+                        {t.liquidity}
                       </td>
                     </tr>
-                    <TableRow label="Current Ratio" keyName="currentRatio" />
-                    <TableRow label="Quick Ratio" keyName="quickRatio" />
+                    <TableRow label={t.current_ratio} keyName="currentRatio" />
+                    <TableRow label={t.quick_ratio} keyName="quickRatio" />
                     
                     <tr className={isDark ? "bg-zinc-800/20" : "bg-zinc-100/30"}>
                       <td colSpan={processedPeriodsForTable.length + 1} className="py-3 px-6 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-                        Leverage Ratios
+                        {t.leverage}
                       </td>
                     </tr>
-                    <TableRow label="Debt to Equity" keyName="debtToEquity" />
+                    <TableRow label={t.debt_to_equity} keyName="debtToEquity" />
                     
                     <tr className={isDark ? "bg-zinc-800/20" : "bg-zinc-100/30"}>
                       <td colSpan={processedPeriodsForTable.length + 1} className="py-3 px-6 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-                        Valuation & Dividends
+                        {t.valuation_dividends}
                       </td>
                     </tr>
                     <tr className={cn("border-b", isDark ? "border-zinc-800" : "border-zinc-100")}>
@@ -341,7 +344,7 @@ export const FinancialIndicators: React.FC<FinancialIndicatorsProps> = ({ symbol
                         "py-5 px-6 text-xs font-black uppercase tracking-widest sticky left-0 z-10 border-r",
                         isDark ? "bg-zinc-900 text-zinc-400 border-zinc-800" : "bg-white text-zinc-500 border-zinc-100"
                       )}>
-                        P/E (Trailing / Forward)
+                        {t.pe_ratio}
                       </td>
                       <td colSpan={processedPeriodsForTable.length} className={cn("py-5 px-8 text-right text-base font-black", isDark ? "text-zinc-100" : "text-zinc-900")}>
                         {data.stats.pe?.toFixed(2) || 'N/A'} / {data.stats.forwardPE?.toFixed(2) || 'N/A'}
@@ -352,7 +355,7 @@ export const FinancialIndicators: React.FC<FinancialIndicatorsProps> = ({ symbol
                         "py-5 px-6 text-xs font-black uppercase tracking-widest sticky left-0 z-10 border-r",
                         isDark ? "bg-zinc-900 text-zinc-400 border-zinc-800" : "bg-white text-zinc-500 border-zinc-100"
                       )}>
-                        Dividend Yield
+                        {t.dividend_yield}
                       </td>
                       <td colSpan={processedPeriodsForTable.length} className={cn("py-5 px-8 text-right text-base font-black", isDark ? "text-zinc-100" : "text-zinc-900")}>
                         {data.stats.dividendYield ? (data.stats.dividendYield * 100).toFixed(2) + '%' : '0.00%'}
@@ -368,10 +371,9 @@ export const FinancialIndicators: React.FC<FinancialIndicatorsProps> = ({ symbol
                     <Info className={cn("w-4 h-4", isDark ? "text-zinc-100" : "text-zinc-900")} />
                   </div>
                   <div className="flex-1">
-                    <h4 className={cn("text-xs font-black uppercase tracking-widest mb-1.5", isDark ? "text-zinc-100" : "text-zinc-900")}>Quality Score Methodology</h4>
+                    <h4 className={cn("text-xs font-black uppercase tracking-widest mb-1.5", isDark ? "text-zinc-100" : "text-zinc-900")}>{t.methodology_title}</h4>
                     <p className="text-xs text-zinc-500 leading-relaxed font-medium">
-                      The Quality Score is a composite metric based on **Profitability** (ROE, Margins), **Financial Strength** (Liquidity, Debt), and **Growth** (Revenue, Earnings). 
-                      A score above 70 indicates a high-quality business. **Fair Value** is estimated using the Graham Number or a 15x PE multiple as a fallback.
+                      {t.methodology_desc}
                     </p>
                   </div>
                 </div>
@@ -379,7 +381,7 @@ export const FinancialIndicators: React.FC<FinancialIndicatorsProps> = ({ symbol
             </>
           ) : (
             <div className="p-8 text-center">
-              <p className="text-sm text-zinc-500 italic">No financial data available.</p>
+              <p className="text-sm text-zinc-500 italic">{t.no_data}</p>
             </div>
           )}
         </div>

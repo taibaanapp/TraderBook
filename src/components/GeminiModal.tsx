@@ -3,6 +3,10 @@ import { X, Brain, MessageSquare, Newspaper, BarChart3, Loader2, ExternalLink, U
 import { cn } from '../utils/cn';
 import Markdown from 'react-markdown';
 
+import { TRANSLATIONS } from '../constants/translations';
+
+const t = TRANSLATIONS.TH.gemini;
+
 interface GeminiAnalysis {
   headlines: { title: string; url: string }[];
   social_posts: { author: string; content: string; url: string }[];
@@ -38,7 +42,7 @@ export const GeminiModal: React.FC<GeminiModalProps> = ({
   const isDark = theme === 'dark';
 
   const getRecommendationColor = (rec: string) => {
-    if (rec.includes('ลงทุน')) return 'text-emerald-500';
+    if (rec.includes(t.recommendation)) return 'text-emerald-500';
     if (rec.includes('กังวล')) return 'text-rose-500';
     if (rec.includes('รอ')) return 'text-amber-500';
     return 'text-blue-500';
@@ -69,7 +73,7 @@ export const GeminiModal: React.FC<GeminiModalProps> = ({
                 Gemini Analysis: {symbol}
               </h2>
               <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-                ช่วงเวลา: {date} (± 4 วัน)
+                {t.period}: {date} (± 4 {t.days})
               </p>
             </div>
           </div>
@@ -90,7 +94,7 @@ export const GeminiModal: React.FC<GeminiModalProps> = ({
             <div className="h-64 flex flex-col items-center justify-center gap-4">
               <Loader2 className="w-10 h-10 text-rose-500 animate-spin" />
               <p className={cn("text-sm font-bold uppercase tracking-widest animate-pulse", isDark ? "text-zinc-400" : "text-zinc-500")}>
-                Gemini กำลังวิเคราะห์ข้อมูลตลาด...
+                {t.analyzing}
               </p>
             </div>
           ) : error ? (
@@ -101,7 +105,7 @@ export const GeminiModal: React.FC<GeminiModalProps> = ({
               <div className="w-12 h-12 rounded-full bg-rose-500/20 flex items-center justify-center mb-4">
                 <X className="w-6 h-6 text-rose-500" />
               </div>
-              <h3 className={cn("text-base font-bold mb-2", isDark ? "text-rose-400" : "text-rose-900")}>การวิเคราะห์ล้มเหลว</h3>
+              <h3 className={cn("text-base font-bold mb-2", isDark ? "text-rose-400" : "text-rose-900")}>{t.analysis_failed}</h3>
               <p className={cn("text-sm max-w-md", isDark ? "text-rose-300" : "text-rose-700")}>{error}</p>
             </div>
           ) : analysis ? (
@@ -110,7 +114,7 @@ export const GeminiModal: React.FC<GeminiModalProps> = ({
               <section className="space-y-4">
                 <div className="flex items-center gap-2 text-rose-500">
                   <Newspaper className="w-5 h-5" />
-                  <h3 className="text-sm font-black uppercase tracking-widest">ข่าวสำคัญ 5 อันดับล่าสุด</h3>
+                  <h3 className="text-sm font-black uppercase tracking-widest">{t.top_headlines}</h3>
                 </div>
                 <div className="grid gap-3">
                   {analysis.headlines.map((news, i) => (
@@ -135,7 +139,7 @@ export const GeminiModal: React.FC<GeminiModalProps> = ({
               <section className="space-y-4">
                 <div className="flex items-center gap-2 text-blue-500">
                   <MessageSquare className="w-5 h-5" />
-                  <h3 className="text-sm font-black uppercase tracking-widest">ความคิดเห็นจากโซเชียล</h3>
+                  <h3 className="text-sm font-black uppercase tracking-widest">{t.social_opinions}</h3>
                 </div>
                 <div className="grid gap-4">
                   {analysis.social_posts.map((post, i) => (
@@ -155,7 +159,7 @@ export const GeminiModal: React.FC<GeminiModalProps> = ({
                         </div>
                         {post.url && post.url !== "#" && (
                           <a href={post.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-[10px] font-bold uppercase tracking-widest flex items-center gap-1">
-                            ดูต้นฉบับ <ExternalLink className="w-3 h-3" />
+                            {t.view_original} <ExternalLink className="w-3 h-3" />
                           </a>
                         )}
                       </div>
@@ -169,26 +173,26 @@ export const GeminiModal: React.FC<GeminiModalProps> = ({
               <section className="space-y-4">
                 <div className="flex items-center gap-2 text-emerald-500">
                   <BarChart3 className="w-5 h-5" />
-                  <h3 className="text-sm font-black uppercase tracking-widest">บทวิเคราะห์จาก AI</h3>
+                  <h3 className="text-sm font-black uppercase tracking-widest">{t.ai_analysis}</h3>
                 </div>
                 <div className={cn(
                   "p-6 rounded-2xl border space-y-6",
                   isDark ? "bg-zinc-900/50 border-zinc-800" : "bg-zinc-50 border-zinc-100"
                 )}>
                   <div className="space-y-2">
-                    <h4 className={cn("text-xs font-black uppercase tracking-widest", isDark ? "text-zinc-500" : "text-zinc-400")}>สรุปภาพรวม</h4>
+                    <h4 className={cn("text-xs font-black uppercase tracking-widest", isDark ? "text-zinc-500" : "text-zinc-400")}>{t.summary}</h4>
                     <p className={cn("text-sm leading-relaxed", isDark ? "text-zinc-300" : "text-zinc-700")}>{analysis.ai_analysis.summary}</p>
                   </div>
 
                   <div className="space-y-2">
-                    <h4 className={cn("text-xs font-black uppercase tracking-widest", isDark ? "text-zinc-500" : "text-zinc-400")}>คำแนะนำ</h4>
+                    <h4 className={cn("text-xs font-black uppercase tracking-widest", isDark ? "text-zinc-500" : "text-zinc-400")}>{t.recommendation}</h4>
                     <div className={cn("text-lg font-black", getRecommendationColor(analysis.ai_analysis.recommendation))}>
                       {analysis.ai_analysis.recommendation}
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <h4 className={cn("text-xs font-black uppercase tracking-widest", isDark ? "text-zinc-500" : "text-zinc-400")}>รายละเอียดเชิงลึก</h4>
+                    <h4 className={cn("text-xs font-black uppercase tracking-widest", isDark ? "text-zinc-500" : "text-zinc-400")}>{t.details}</h4>
                     <div className={cn("text-sm leading-relaxed markdown-body", isDark ? "text-zinc-300" : "text-zinc-700")}>
                       <Markdown>{analysis.ai_analysis.details}</Markdown>
                     </div>
@@ -211,7 +215,7 @@ export const GeminiModal: React.FC<GeminiModalProps> = ({
             onClick={onClose}
             className="bg-rose-600 text-white px-6 py-2 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-rose-700 transition-all shadow-lg shadow-rose-600/20"
           >
-            ปิดการวิเคราะห์
+            {t.close_analysis}
           </button>
         </div>
       </div>

@@ -2,6 +2,9 @@ import React from 'react';
 import { ChevronRight, TrendingUp, TrendingDown, Clock, Calendar } from 'lucide-react';
 import { getFlag, formatCurrency } from '../utils/formatters';
 import { cn } from '../utils/cn';
+import { TRANSLATIONS } from '../constants/translations';
+
+const t = TRANSLATIONS.TH.asset;
 
 interface AssetInfoProps {
   symbol: string;
@@ -35,7 +38,7 @@ export const AssetInfo: React.FC<AssetInfoProps> = ({
         <div className="text-4xl">{getFlag(symbol)}</div>
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Market Data</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">{t.market_data}</span>
             <ChevronRight className="w-3 h-3 text-zinc-300" />
             <span className={cn("text-[10px] font-bold uppercase tracking-widest", isDark ? "text-zinc-100" : "text-zinc-900")}>{symbol}</span>
           </div>
@@ -56,17 +59,17 @@ export const AssetInfo: React.FC<AssetInfoProps> = ({
       
       <div className={cn("flex gap-8 border-l pl-8", isDark ? "border-zinc-800" : "border-zinc-100")}>
         <div className="text-center">
-          <p className="text-[10px] uppercase font-bold text-zinc-400 mb-1">Interval</p>
+          <p className="text-[10px] uppercase font-bold text-zinc-400 mb-1">{t.interval}</p>
           <p className={cn("text-sm font-bold flex items-center gap-1.5", isDark ? "text-zinc-300" : "text-zinc-700")}>
             <Clock className="w-3.5 h-3.5 text-zinc-400" />
-            {interval === '1h' ? 'Hourly' : interval === '1d' ? 'Daily' : 'Weekly'}
+            {interval === '1h' ? t.hourly : interval === '1d' ? t.daily : t.weekly}
           </p>
         </div>
         <div className="text-center">
-          <p className="text-[10px] uppercase font-bold text-zinc-400 mb-1">Since</p>
+          <p className="text-[10px] uppercase font-bold text-zinc-400 mb-1">{t.since}</p>
           <p className={cn("text-sm font-bold flex items-center gap-1.5", isDark ? "text-zinc-300" : "text-zinc-700")}>
             <Calendar className="w-3.5 h-3.5 text-zinc-400" />
-            {interval === '1h' ? 'Last 2 Years' : 'Jan 1, 2020'}
+            {interval === '1h' ? t.last_2_years : t.jan_1_2020}
           </p>
         </div>
       </div>
