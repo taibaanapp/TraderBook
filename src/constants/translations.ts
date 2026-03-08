@@ -104,6 +104,7 @@ export const TRANSLATIONS = {
       ai_disabled: "ปิดการใช้งาน AI Insight",
       ai_disabled_desc: "เปิดใช้งาน AI เพื่อสร้างโปรไฟล์ธุรกิจและแนวโน้ม",
       no_data: "ไม่มีข้อมูลโปรไฟล์สำหรับหุ้นนี้",
+      fetch_ai: "เรียกใช้งาน AI (Fetch AI)",
     },
     sr: {
       support: "แนวรับ (Support)",
@@ -188,6 +189,11 @@ export const TRANSLATIONS = {
       latest: "Latest",
       general_industry: "General Industry",
       pe_ratio: "P/E:",
+      pe_ttm: "P/E (TTM):",
+      pe_industry: "Industry P/E:",
+      pe_avg_5y: "Avg 5Y P/E:",
+      higher_than_avg: "สูงกว่าค่าเฉลี่ย 5 ปี",
+      lower_than_avg: "ต่ำกว่าค่าเฉลี่ย 5 ปี",
       current_price: "Current Price",
       open_label: "Open",
       high_label: "High",
@@ -300,7 +306,9 @@ export const TRANSLATIONS = {
       recently_viewed: "หุ้นที่ดูล่าสุด (Recently Viewed)",
       recently_viewed_desc: "แสดงประวัติหุ้นที่เพิ่งดู",
       stock_notebook: "สมุดบันทึกหุ้น (Stock Notebook)",
-      stock_notebook_desc: "แสดงบันทึกส่วนตัวสำหรับแต่ละหุ้น"
+      stock_notebook_desc: "แสดงบันทึกส่วนตัวสำหรับแต่ละหุ้น",
+      elliott_wave_ai: "วิเคราะห์ Elliott Wave ด้วย AI",
+      elliott_wave_ai_desc: "เปิดใช้งานการวิเคราะห์ Elliott Wave ด้วย Gemini AI",
     },
     reversal_dashboard: {
       title: "แดชบอร์ดสัญญาณกลับตัว (Reversal Dashboard)",

@@ -628,9 +628,9 @@ async function startServer() {
       };
 
       // Fetch chart data, index data, and current fundamentals in parallel
-      let chartResult, indexResult, quoteResult, profileResult;
+      let chartResult, indexResult, quoteResult, profileResult, setIndexResult;
       try {
-        [chartResult, indexResult, quoteResult, profileResult] = await Promise.all([
+        const promises: Promise<any>[] = [
           safeYahooCall(() => {
             logExternalRequest('query2.finance.yahoo.com', 'Yahoo: Chart');
             return yahooFinance.chart(symbol, queryOptions);
@@ -645,9 +645,28 @@ async function startServer() {
           }).catch(() => null),
           safeYahooCall(() => {
             logExternalRequest('query2.finance.yahoo.com', 'Yahoo: Quote Summary (Profile)');
-            return yahooFinance.quoteSummary(symbol, { modules: ['assetProfile'] });
+            return yahooFinance.quoteSummary(symbol, { 
+              modules: ['assetProfile', 'summaryDetail', 'defaultKeyStatistics', 'financialData', 'earningsTrend', 'indexTrend', 'earnings'] 
+            });
           }).catch(() => null)
-        ]);
+        ];
+
+        // If it's a Thai stock, also try to fetch SET index summary for industry PE fallback
+        if (symbol.endsWith('.BK')) {
+          promises.push(
+            safeYahooCall(() => {
+              logExternalRequest('query2.finance.yahoo.com', 'Yahoo: SET Index Quote');
+              return yahooFinance.quote('^SET.BK');
+            }).catch(() => null)
+          );
+        }
+
+        const results = await Promise.all(promises);
+        chartResult = results[0];
+        indexResult = results[1];
+        quoteResult = results[2];
+        profileResult = results[3];
+        setIndexResult = results[4];
       } catch (e: any) {
         console.error(`Yahoo Finance API Error for ${symbol}:`, e.message);
         if (e.message?.includes('not found') || e.message?.includes('delisted')) {
@@ -726,6 +745,47 @@ async function startServer() {
         };
       }).filter(q => q.close !== null);
 
+      // Manual 5Y Avg PE calculation if missing
+      let calculated5YAvgPE = profileResult?.summaryDetail?.fiveYearAvgPE || profileResult?.defaultKeyStatistics?.fiveYearAvgPE;
+      
+      if (!calculated5YAvgPE && profileResult?.earnings?.financialsChart?.yearly) {
+        try {
+          const yearlyEarnings = profileResult.earnings.financialsChart.yearly;
+          const sharesOutstanding = profileResult?.defaultKeyStatistics?.sharesOutstanding || quoteResult?.sharesOutstanding;
+          
+          if (sharesOutstanding && yearlyEarnings.length > 0) {
+            // Fetch 5y chart to get historical prices for those years
+            const history5y = await safeYahooCall(() => 
+              yahooFinance.chart(symbol, { period1: '5y', interval: '1mo' })
+            ).catch(() => null);
+            
+            if (history5y && history5y.quotes) {
+              const peValues: number[] = [];
+              yearlyEarnings.forEach((yearData: any) => {
+                const year = yearData.date;
+                const netIncome = yearData.earnings;
+                if (netIncome && netIncome !== 0) {
+                  const eps = netIncome / sharesOutstanding;
+                  // Find price around that year
+                  const yearQuote = history5y.quotes.find((q: any) => 
+                    new Date(q.date).getFullYear() === year
+                  );
+                  if (yearQuote && yearQuote.close) {
+                    peValues.push(yearQuote.close / eps);
+                  }
+                }
+              });
+              
+              if (peValues.length > 0) {
+                calculated5YAvgPE = peValues.reduce((a, b) => a + b, 0) / peValues.length;
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Error calculating manual 5Y Avg PE:', err);
+        }
+      }
+
       const responseData = {
         symbol: chartResult.meta.symbol,
         currency: chartResult.meta.currency,
@@ -735,12 +795,14 @@ async function startServer() {
         marketState: quoteResult?.marketState,
         data: chartData,
         fundamentals: {
-          eps,
+          eps: eps || profileResult?.defaultKeyStatistics?.trailingEps || profileResult?.financialData?.revenuePerShare, // fallback
           bookValue,
-          trailingPE: quoteResult?.trailingPE,
-          priceToBook: quoteResult?.priceToBook,
-          marketCap: quoteResult?.marketCap,
-          averageVolume: quoteResult?.averageDailyVolume3Month
+          trailingPE: quoteResult?.trailingPE || profileResult?.summaryDetail?.trailingPE || profileResult?.defaultKeyStatistics?.trailingPE || profileResult?.financialData?.trailingPE,
+          fiveYearAvgPE: calculated5YAvgPE,
+          industryPE: profileResult?.indexTrend?.peRatio || setIndexResult?.trailingPE || profileResult?.summaryDetail?.forwardPE || profileResult?.defaultKeyStatistics?.forwardPE, 
+          priceToBook: quoteResult?.priceToBook || profileResult?.summaryDetail?.priceToBook || profileResult?.defaultKeyStatistics?.priceToBook,
+          marketCap: quoteResult?.marketCap || profileResult?.summaryDetail?.marketCap,
+          averageVolume: quoteResult?.averageDailyVolume3Month || profileResult?.summaryDetail?.averageVolume
         }
       };
 

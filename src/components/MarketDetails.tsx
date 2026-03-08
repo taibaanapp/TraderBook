@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, BarChart2, Activity, TrendingUp, Calendar, Building2, Globe } from 'lucide-react';
+import { Clock, BarChart2, Activity, TrendingUp, Calendar, Building2, Globe, History } from 'lucide-react';
 import { formatCurrency } from '../utils/formatters';
 import { cn } from '../utils/cn';
 import { StockData, ApiResponse } from '../types';
@@ -57,6 +57,19 @@ export const MarketDetails: React.FC<MarketDetailsProps> = ({ symbol, data, hove
 
   const marketStatus = getMarketStatus();
 
+  const peTTM = React.useMemo(() => {
+    if (!data?.fundamentals?.eps || data.fundamentals.eps === 0 || !displayData?.close) return null;
+    return displayData.close / data.fundamentals.eps;
+  }, [data?.fundamentals?.eps, displayData?.close]);
+
+  const formatPE = (val: number | null | undefined) => {
+    if (val === null || val === undefined) return 'N/A';
+    if (val < 0) return `(${Math.abs(val).toFixed(2)})x`;
+    return `${val.toFixed(2)}x`;
+  };
+
+  const peAvg5Y = data?.fundamentals?.fiveYearAvgPE;
+
   if (!displayData) return null;
 
   return (
@@ -106,11 +119,37 @@ export const MarketDetails: React.FC<MarketDetailsProps> = ({ symbol, data, hove
                 {data?.industry || t.general_industry}
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <Globe className="w-4 h-4 text-zinc-400" />
-              <span className="text-xs font-black text-zinc-400 uppercase tracking-widest">
-                {t.pe_ratio} <span className={isDark ? "text-zinc-100" : "text-zinc-900"}>{typeof data?.fundamentals?.trailingPE === 'number' ? `${data.fundamentals.trailingPE.toFixed(2)}x` : 'N/A'}</span>
-              </span>
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-zinc-400" />
+                <span className="text-xs font-black text-zinc-400 uppercase tracking-widest">
+                  {t.pe_ttm} <span className={cn(isDark ? "text-zinc-100" : "text-zinc-900", peTTM && peTTM < 0 && "text-rose-500")}>{formatPE(peTTM)}</span>
+                </span>
+                {peTTM && peAvg5Y && (
+                  <span className={cn(
+                    "text-[10px] font-bold px-2 py-0.5 rounded-md",
+                    peTTM > peAvg5Y 
+                      ? (isDark ? "bg-rose-900/20 text-rose-400" : "bg-rose-50 text-rose-600")
+                      : (isDark ? "bg-emerald-900/20 text-emerald-400" : "bg-emerald-50 text-emerald-600")
+                  )}>
+                    {peTTM > peAvg5Y ? t.higher_than_avg : t.lower_than_avg}
+                  </span>
+                )}
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-zinc-400" />
+                <span className="text-xs font-black text-zinc-400 uppercase tracking-widest">
+                  {t.pe_industry} <span className={cn(isDark ? "text-zinc-100" : "text-zinc-900", data?.fundamentals?.industryPE && data.fundamentals.industryPE < 0 && "text-rose-500")}>{formatPE(data?.fundamentals?.industryPE)}</span>
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <History className="w-4 h-4 text-zinc-400" />
+                <span className="text-xs font-black text-zinc-400 uppercase tracking-widest">
+                  {t.pe_avg_5y} <span className={cn(isDark ? "text-zinc-100" : "text-zinc-900", peAvg5Y && peAvg5Y < 0 && "text-rose-500")}>{formatPE(peAvg5Y)}</span>
+                </span>
+              </div>
             </div>
           </div>
         </div>

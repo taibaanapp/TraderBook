@@ -21,6 +21,7 @@ interface StockProfileProps {
   onToggle: () => void;
   isAiEnabled: boolean;
   onToggleAi: () => void;
+  onFetch: () => void;
 }
 
 export const StockProfile: React.FC<StockProfileProps> = ({ 
@@ -31,7 +32,8 @@ export const StockProfile: React.FC<StockProfileProps> = ({
   isExpanded, 
   onToggle,
   isAiEnabled,
-  onToggleAi
+  onToggleAi,
+  onFetch
 }) => {
   const isDark = theme === 'dark';
 
@@ -100,9 +102,20 @@ export const StockProfile: React.FC<StockProfileProps> = ({
           ) : data ? (
             <>
               <section>
-                <div className="flex items-center gap-2.5 mb-3">
-                  <Globe className="w-4 h-4 text-rose-500" />
-                  <h4 className={cn("text-xs font-black uppercase tracking-widest", isDark ? "text-zinc-500" : "text-zinc-400")}>{t.description}</h4>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2.5">
+                    <Globe className="w-4 h-4 text-rose-500" />
+                    <h4 className={cn("text-xs font-black uppercase tracking-widest", isDark ? "text-zinc-500" : "text-zinc-400")}>{t.description}</h4>
+                  </div>
+                  <button
+                    onClick={onFetch}
+                    className={cn(
+                      "text-[10px] font-bold uppercase tracking-widest hover:underline",
+                      isDark ? "text-zinc-500" : "text-zinc-400"
+                    )}
+                  >
+                    {t.fetch_ai}
+                  </button>
                 </div>
                 <p className={cn("text-sm leading-relaxed font-medium", isDark ? "text-zinc-300" : "text-zinc-600")}>
                   {data.description}
@@ -151,7 +164,16 @@ export const StockProfile: React.FC<StockProfileProps> = ({
             </>
           ) : (
             <div className="text-center py-8">
-              <p className="text-sm text-zinc-500 italic">{t.no_data}</p>
+              <p className="text-sm text-zinc-500 italic mb-6">{t.no_data}</p>
+              <button
+                onClick={onFetch}
+                className={cn(
+                  "px-6 py-2.5 rounded-xl font-bold text-sm uppercase tracking-widest transition-all shadow-sm active:scale-95",
+                  isDark ? "bg-zinc-100 text-zinc-900 hover:bg-zinc-200" : "bg-zinc-900 text-white hover:bg-zinc-800"
+                )}
+              >
+                {t.fetch_ai}
+              </button>
             </div>
           )}
         </div>

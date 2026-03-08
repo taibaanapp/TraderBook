@@ -434,10 +434,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
               <div>
                 <h3 className={cn("text-sm font-bold", isDark ? "text-zinc-100" : "text-zinc-900")}>
-                  Elliott Wave AI
+                  {t.elliott_wave_ai}
                 </h3>
                 <p className="text-[10px] text-zinc-500 mt-0.5">
-                  Enable AI analysis for Elliott Waves
+                  {t.elliott_wave_ai_desc}
                 </p>
               </div>
             </div>

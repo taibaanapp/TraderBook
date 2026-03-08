@@ -98,7 +98,7 @@ export default function App() {
   const [geminiError, setGeminiError] = useState<string | null>(null);
   const [geminiAnalysis, setGeminiAnalysis] = useState<any | null>(null);
   const [elliottAnalysis, setElliottAnalysis] = useState<string | null>(null);
-  const [isElliottWaveAiEnabled, setIsElliottWaveAiEnabled] = useState(true);
+  const [isElliottWaveAiEnabled, setIsElliottWaveAiEnabled] = useState(false);
   const [showAiConfirmation, setShowAiConfirmation] = useState(false);
   const [pendingElliottWaveData, setPendingElliottWaveData] = useState<{data: StockData, label: string} | null>(null);
   const [geminiTargetDate, setGeminiTargetDate] = useState<string>('');
@@ -242,12 +242,8 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (isAiInsightEnabled) {
-      fetchStockProfile(symbol, stockData?.fullExchangeName);
-    } else {
-      setStockProfile(null);
-    }
-  }, [symbol, isAiInsightEnabled, stockData?.fullExchangeName]);
+    setStockProfile(null);
+  }, [symbol]);
 
   // Context Menu State
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, data: any } | null>(null);
@@ -434,6 +430,11 @@ export default function App() {
       setShowNotebook(savedShowNotebook === 'true');
     }
 
+    const savedElliottWaveAi = localStorage.getItem('isElliottWaveAiEnabled');
+    if (savedElliottWaveAi !== null) {
+      setIsElliottWaveAiEnabled(savedElliottWaveAi === 'true');
+    }
+
     const savedRecentStocks = localStorage.getItem('recentStocks');
     if (savedRecentStocks) {
       try {
@@ -524,6 +525,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('showNotebook', String(showNotebook));
   }, [showNotebook]);
+
+  useEffect(() => {
+    localStorage.setItem('isElliottWaveAiEnabled', String(isElliottWaveAiEnabled));
+  }, [isElliottWaveAiEnabled]);
 
   useEffect(() => {
     localStorage.setItem('recentStocks', JSON.stringify(recentStocks));
@@ -1204,6 +1209,7 @@ export default function App() {
                   onToggle={() => setIsProfileExpanded(!isProfileExpanded)}
                   isAiEnabled={isAiInsightEnabled}
                   onToggleAi={() => setIsAiInsightEnabled(!isAiInsightEnabled)}
+                  onFetch={() => fetchStockProfile(symbol, stockData?.fullExchangeName)}
                 />
               )}
               

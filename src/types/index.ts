@@ -61,6 +61,8 @@ export interface ApiResponse {
     eps?: number;
     bookValue?: number;
     trailingPE?: number;
+    fiveYearAvgPE?: number;
+    industryPE?: number;
     priceToBook?: number;
     marketCap?: number;
     averageVolume?: number;
