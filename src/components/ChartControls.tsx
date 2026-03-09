@@ -34,6 +34,8 @@ interface ChartControlsProps {
   setShowIchimoku: (val: boolean) => void;
   showMoneyFlow: boolean;
   setShowMoneyFlow: (val: boolean) => void;
+  showPickBo: boolean;
+  setShowPickBo: (val: boolean) => void;
   isInvertedY: boolean;
   setIsInvertedY: (val: boolean) => void;
   isLogScale: boolean;
@@ -87,6 +89,8 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
   setShowIchimoku,
   showMoneyFlow,
   setShowMoneyFlow,
+  showPickBo,
+  setShowPickBo,
   isInvertedY,
   setIsInvertedY,
   isLogScale,
@@ -423,6 +427,19 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
             )}
           >
             Money Flow
+          </button>
+          <button
+            disabled={isSmartSRMode}
+            onClick={() => setShowPickBo(!showPickBo)}
+            title="PickBo Indicator (Swing-based Fibonacci)"
+            className={cn(
+              "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
+              showPickBo 
+                ? (isDark ? "bg-emerald-900/40 text-emerald-400 shadow-sm" : "bg-emerald-100 text-emerald-700 shadow-sm") 
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            )}
+          >
+            PickBo
           </button>
         </div>
       </div>

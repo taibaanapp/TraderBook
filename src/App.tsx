@@ -81,6 +81,7 @@ export default function App() {
   const [showVolumeSpikes, setShowVolumeSpikes] = useState(false);
   const [showIchimoku, setShowIchimoku] = useState(false);
   const [showMoneyFlow, setShowMoneyFlow] = useState(false);
+  const [showPickBo, setShowPickBo] = useState(false);
   const [isInvertedY, setIsInvertedY] = useState(false);
   const [isSimulationMode, setIsSimulationMode] = useState(false);
   const [simulationRate, setSimulationRate] = useState(-1.5);
@@ -410,6 +411,11 @@ export default function App() {
       setShowEMAX(savedEMAX === 'true');
     }
 
+    const savedPickBo = localStorage.getItem('showPickBo');
+    if (savedPickBo !== null) {
+      setShowPickBo(savedPickBo === 'true');
+    }
+
     const savedLogScale = localStorage.getItem('isLogScale');
     if (savedLogScale !== null) {
       setIsLogScale(savedLogScale === 'true');
@@ -509,6 +515,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('showEMAX', String(showEMAX));
   }, [showEMAX]);
+
+  useEffect(() => {
+    localStorage.setItem('showPickBo', String(showPickBo));
+  }, [showPickBo]);
 
   useEffect(() => {
     localStorage.setItem('isLogScale', String(isLogScale));
@@ -1300,6 +1310,8 @@ export default function App() {
                   setShowIchimoku={setShowIchimoku}
                   showMoneyFlow={showMoneyFlow}
                   setShowMoneyFlow={setShowMoneyFlow}
+                  showPickBo={showPickBo}
+                  setShowPickBo={setShowPickBo}
                   isInvertedY={isInvertedY}
                   setIsInvertedY={setIsInvertedY}
                   isLogScale={isLogScale}
@@ -1359,6 +1371,8 @@ export default function App() {
                       setShowIchimoku={setShowIchimoku}
                       showMoneyFlow={showMoneyFlow}
                       setShowMoneyFlow={setShowMoneyFlow}
+                      showPickBo={showPickBo}
+                      setShowPickBo={setShowPickBo}
                       isInvertedY={isInvertedY}
                       setIsInvertedY={setIsInvertedY}
                       isLogScale={isLogScale}
@@ -1413,6 +1427,7 @@ export default function App() {
                     showVolumeSpikes={showVolumeSpikes}
                     showIchimoku={showIchimoku}
                     showMoneyFlow={showMoneyFlow}
+                    showPickBo={showPickBo}
                     isInvertedY={isInvertedY}
                     chartType={chartType}
                     onHover={setHoveredData}

@@ -26,6 +26,7 @@ interface ChartProps {
   showVolumeSpikes?: boolean;
   showIchimoku?: boolean;
   showMoneyFlow?: boolean;
+  showPickBo?: boolean;
   isInvertedY?: boolean;
   chartType: 'line' | 'candlestick';
   onHover: (data: StockData | null) => void;
@@ -68,6 +69,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
   showVolumeSpikes,
   showIchimoku,
   showMoneyFlow,
+  showPickBo,
   isInvertedY,
   chartType,
   onHover,
@@ -100,6 +102,22 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
     y: number;
     containerWidth: number;
   } | null>(null);
+
+  const [pickBoLevels, setPickBoLevels] = React.useState<{
+    l1: number;
+    l2: number;
+    clickPrice: number;
+    clickIndex: number;
+    extremePrice: number;
+    extremeIndex: number;
+    isResistance: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!showPickBo) {
+      setPickBoLevels(null);
+    }
+  }, [showPickBo]);
 
   const rsiDivergences = useMemo(() => detectDivergences(data, 60), [data]);
   const macdDivergences = useMemo(() => detectMACDDivergences(data, 60), [data]);
@@ -1596,6 +1614,109 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
           .attr('class', 'text-[9px] font-black fill-rose-500 uppercase tracking-widest')
           .text(`จุดตัดขาดทุน: ${scenarioResult.invalidation.toFixed(2)}`);
       }
+
+      // PickBo Lines (v2)
+      if (showPickBo && pickBoLevels !== null) {
+        const { l1, l2, clickPrice, clickIndex, extremePrice, extremeIndex, isResistance } = pickBoLevels;
+
+        // Extreme Point (Amber)
+        chartContent.append('circle')
+          .attr('cx', xScale(extremeIndex))
+          .attr('cy', yScale(extremePrice))
+          .attr('r', 6)
+          .attr('fill', '#f59e0b')
+          .attr('stroke', 'white')
+          .attr('stroke-width', 2);
+
+        chartContent.append('text')
+          .attr('x', xScale(extremeIndex))
+          .attr('y', yScale(extremePrice) + (isResistance ? -15 : 25))
+          .attr('text-anchor', 'middle')
+          .attr('fill', '#f59e0b')
+          .attr('font-size', '11px')
+          .attr('font-weight', 'black')
+          .attr('class', 'drop-shadow-sm')
+          .text(`${isResistance ? 'SWING HIGH' : 'SWING LOW'}: ${extremePrice.toFixed(2)}`);
+
+        // Click Point (Indigo)
+        chartContent.append('circle')
+          .attr('cx', xScale(clickIndex))
+          .attr('cy', yScale(clickPrice))
+          .attr('r', 6)
+          .attr('fill', '#6366f1')
+          .attr('stroke', 'white')
+          .attr('stroke-width', 2);
+
+        chartContent.append('text')
+          .attr('x', xScale(clickIndex) + 10)
+          .attr('y', yScale(clickPrice))
+          .attr('dy', '0.32em')
+          .attr('fill', '#6366f1')
+          .attr('font-size', '11px')
+          .attr('font-weight', 'black')
+          .attr('class', 'drop-shadow-sm')
+          .text(`PICK: ${clickPrice.toFixed(2)}`);
+
+        // Level 1 Line
+        const l1Y = yScale(l1);
+        const l1Color = isResistance ? '#10b981' : '#ef4444';
+        chartContent.append('line')
+          .attr('x1', margin.left)
+          .attr('y1', l1Y)
+          .attr('x2', width - margin.right)
+          .attr('y2', l1Y)
+          .attr('stroke', l1Color)
+          .attr('stroke-width', 2)
+          .attr('stroke-dasharray', '4,4');
+
+        const l1LabelGroup = chartContent.append('g');
+        l1LabelGroup.append('rect')
+          .attr('x', width - margin.right)
+          .attr('y', l1Y - 10)
+          .attr('width', 85)
+          .attr('height', 20)
+          .attr('fill', l1Color)
+          .attr('rx', 4);
+
+        l1LabelGroup.append('text')
+          .attr('x', width - margin.right + 5)
+          .attr('y', l1Y)
+          .attr('dy', '0.32em')
+          .attr('fill', 'white')
+          .attr('font-size', '10px')
+          .attr('font-weight', 'black')
+          .text(`38.2%: ${l1.toFixed(2)}`);
+
+        // Level 2 Line
+        const l2Y = yScale(l2);
+        const l2Color = isResistance ? '#34d399' : '#f87171';
+        chartContent.append('line')
+          .attr('x1', margin.left)
+          .attr('y1', l2Y)
+          .attr('x2', width - margin.right)
+          .attr('y2', l2Y)
+          .attr('stroke', l2Color)
+          .attr('stroke-width', 2)
+          .attr('stroke-dasharray', '4,4');
+
+        const l2LabelGroup = chartContent.append('g');
+        l2LabelGroup.append('rect')
+          .attr('x', width - margin.right)
+          .attr('y', l2Y - 10)
+          .attr('width', 85)
+          .attr('height', 20)
+          .attr('fill', l2Color)
+          .attr('rx', 4);
+
+        l2LabelGroup.append('text')
+          .attr('x', width - margin.right + 5)
+          .attr('y', l2Y)
+          .attr('dy', '0.32em')
+          .attr('fill', 'white')
+          .attr('font-size', '10px')
+          .attr('font-weight', 'black')
+          .text(`61.8%: ${l2.toFixed(2)}`);
+      }
     };
 
     const zoom = d3.zoom<SVGSVGElement, unknown>()
@@ -1791,6 +1912,72 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
       srGuide.style('display', 'none');
       onHover(null);
     }).on('click', (event) => {
+      if (showPickBo) {
+        const [mx, my] = d3.pointer(event);
+        const currentX = stateRef.current.lastTransform.rescaleX(x);
+        const currentY = stateRef.current.isYAuto ? y : stateRef.current.lastTransform.rescaleY(y);
+        
+        const idx = Math.round(currentX.invert(mx));
+        const clickPrice = currentY.invert(my);
+        
+        if (idx >= 0 && idx < data.length) {
+          // Scan backwards 60 bars from the clicked candle
+          const lookback = 60;
+          const startIdx = Math.max(0, idx - lookback);
+          const rangeData = data.slice(startIdx, idx + 1);
+          
+          if (rangeData.length > 0) {
+            let maxHigh = -Infinity;
+            let minLow = Infinity;
+            let maxIdx = -1;
+            let minIdx = -1;
+
+            rangeData.forEach((d, i) => {
+              const actualIdx = startIdx + i;
+              if (d.high > maxHigh) {
+                maxHigh = d.high;
+                maxIdx = actualIdx;
+              }
+              if (d.low < minLow) {
+                minLow = d.low;
+                minIdx = actualIdx;
+              }
+            });
+
+            // Determine if click is closer to High or Low
+            const distToHigh = Math.abs(maxHigh - clickPrice);
+            const distToLow = Math.abs(minLow - clickPrice);
+            const isNearHigh = distToHigh < distToLow;
+            
+            if (isNearHigh) {
+              // Near High -> Support (Down)
+              const diff = clickPrice - minLow;
+              setPickBoLevels({
+                l1: clickPrice - (diff * 0.382),
+                l2: clickPrice - (diff * 0.618),
+                clickPrice,
+                clickIndex: idx,
+                extremePrice: minLow,
+                extremeIndex: minIdx,
+                isResistance: false
+              });
+            } else {
+              // Near Low -> Resistance (Up)
+              const diff = maxHigh - clickPrice;
+              setPickBoLevels({
+                l1: clickPrice + (diff * 0.382),
+                l2: clickPrice + (diff * 0.618),
+                clickPrice,
+                clickIndex: idx,
+                extremePrice: maxHigh,
+                extremeIndex: maxIdx,
+                isResistance: true
+              });
+            }
+          }
+        }
+        return;
+      }
       if (isSmartSRMode && !selectedSRDate) {
         const [mx] = d3.pointer(event);
         const currentX = stateRef.current.lastTransform.rescaleX(x);
@@ -1841,6 +2028,8 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
     macdDivergences,
     showElliottWaves,
     showVolumeSpikes,
+    showPickBo,
+    pickBoLevels,
     processedData
   ]);
 
