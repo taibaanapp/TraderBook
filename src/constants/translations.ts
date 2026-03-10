@@ -6,6 +6,7 @@ export const TRANSLATIONS = {
       us_stocks: "หุ้นเมกา 🇺🇸",
       search_not_found: "ไม่พบรายชื่อหุ้นที่ค้นหา",
       search_placeholder: "ค้นหาหุ้น (เช่น AAPL, PTT.BK)",
+      search: "ค้นหา",
       save_image: "บันทึกภาพ (SAVE IMAGE)",
       loading: "กำลังโหลด...",
       error: "เกิดข้อผิดพลาด",
@@ -20,6 +21,8 @@ export const TRANSLATIONS = {
       stop_loss: "จุดตัดขาดทุน",
       confidence: "โอกาส",
       education_only: "* การจำลองทางสถิติเพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำการลงทุน",
+      chart: "กราฟ",
+      portfolio: "พอร์ตโฟลิโอ",
     },
     gemini: {
       analyze_with_gemini: "หาข่าวด้วย Gemini",

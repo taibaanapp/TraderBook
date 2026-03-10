@@ -48,6 +48,7 @@ interface ChartProps {
   isLogScale?: boolean;
   showSaveImage?: boolean;
   isFullscreen?: boolean;
+  exchangeTimezoneName?: string;
 }
 
 export interface TradingChartHandle {
@@ -90,7 +91,8 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
   theme,
   isLogScale,
   showSaveImage = true,
-  isFullscreen
+  isFullscreen,
+  exchangeTimezoneName
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -200,26 +202,27 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
     yDomain: [0, 0] as [number, number],
     xDomain: [0, 0] as [number, number],
     lastTransform: d3.zoomIdentity,
-    lastDataLength: 0
+    lastDataLength: 0,
+    subPaneScales: {} as Record<string, { scale: d3.ScaleLinear<number, number>, y: number, height: number }>
   });
 
   const [paneHeights, setPaneHeights] = React.useState({
-    volume: 80,
-    rsi: 80,
-    macd: 80,
-    obv: 80,
-    moneyFlow: 100
+    volume: 100,
+    rsi: 100,
+    macd: 100,
+    obv: 100,
+    moneyFlow: 120
   });
 
   // Reset pane heights when fullscreen changes
   useEffect(() => {
-    const defaultHeight = isFullscreen ? 150 : 80;
+    const defaultHeight = isFullscreen ? 180 : 100;
     setPaneHeights({
       volume: defaultHeight,
       rsi: defaultHeight,
       macd: defaultHeight,
       obv: defaultHeight,
-      moneyFlow: isFullscreen ? 180 : 100
+      moneyFlow: isFullscreen ? 220 : 120
     });
   }, [isFullscreen]);
 
@@ -465,7 +468,35 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
     // Watermark
     const latestData = data[data.length - 1];
     const latestDate = latestData ? new Date(latestData.date) : new Date();
-    const formattedDate = format(latestDate, "d MMMM yyyy 'Time' HH.mm");
+    
+    const formatDate = (date: Date | string, formatStr: string) => {
+      if (!exchangeTimezoneName) return format(new Date(date), formatStr);
+      try {
+        // Use Intl.DateTimeFormat for reliable timezone conversion
+        const options: Intl.DateTimeFormatOptions = {
+          timeZone: exchangeTimezoneName,
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        };
+        const formatter = new Intl.DateTimeFormat('en-US', options);
+        const parts = formatter.formatToParts(new Date(date));
+        const getPart = (type: string) => parts.find(p => p.type === type)?.value || '';
+        
+        // Custom format to match "d MMMM yyyy 'Time' HH.mm" or similar
+        if (formatStr.includes('HH.mm')) {
+          return `${getPart('day')} ${getPart('month')} ${getPart('year')} Time ${getPart('hour')}.${getPart('minute')}`;
+        }
+        return `${getPart('day')} ${getPart('month')} ${getPart('year')}`;
+      } catch (e) {
+        return format(new Date(date), formatStr);
+      }
+    };
+
+    const formattedDate = formatDate(latestDate, "d MMMM yyyy 'Time' HH.mm");
 
     g.append('text')
       .attr('x', width / 2)
@@ -473,7 +504,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
       .attr('text-anchor', 'middle')
       .attr('dominant-baseline', 'central')
       .attr('class', cn(
-        "text-[120px] font-black uppercase tracking-tighter select-none pointer-events-none opacity-[0.03]",
+        "text-[120px] font-black uppercase tracking-tighter select-none pointer-events-none opacity-[0.08]",
         isDark ? "fill-white" : "fill-black"
       ))
       .text(symbol);
@@ -484,7 +515,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
       .attr('text-anchor', 'middle')
       .attr('dominant-baseline', 'central')
       .attr('class', cn(
-        "text-[24px] font-bold uppercase tracking-widest select-none pointer-events-none opacity-[0.05]",
+        "text-[24px] font-bold uppercase tracking-widest select-none pointer-events-none opacity-[0.12]",
         isDark ? "fill-white" : "fill-black"
       ))
       .text(formattedDate);
@@ -494,7 +525,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
     // Grid lines
     const makeYGridlines = () => d3.axisLeft(y).ticks(10);
     g.append('g')
-      .attr('class', `grid ${isDark ? 'text-zinc-800' : 'text-zinc-100'} opacity-20`)
+      .attr('class', `grid ${isDark ? 'text-zinc-700' : 'text-zinc-200'} opacity-30`)
       .attr('transform', `translate(${margin.left}, 0)`)
       .call(makeYGridlines().tickSize(-(width - margin.left - margin.right)).tickFormat(() => ''));
 
@@ -503,7 +534,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
       .ticks(width / 100)
       .tickFormat(i => {
         const d = data[i as number];
-        return d ? format(new Date(d.date), 'MMM dd') : '';
+        return d ? formatDate(d.date, 'MMM dd') : '';
       });
 
     const yAxis = d3.axisRight(y)
@@ -949,6 +980,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
       // Sub-panes
       g.selectAll('.sub-pane').remove();
       let currentY = mainAreaHeight + margin.top + gap + margin.bottom;
+      stateRef.current.subPaneScales = {};
       
       if (showOBV) {
         const obvPane = g.append('g').attr('class', 'sub-pane').attr('transform', `translate(0, ${currentY})`);
@@ -958,6 +990,8 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
         const obvY = d3.scaleLinear()
           .domain([obvMin, obvMax])
           .range([paneHeights.obv, 0]);
+
+        stateRef.current.subPaneScales.obv = { scale: obvY, y: currentY, height: paneHeights.obv };
 
         const obvLine = d3.line<StockData>()
           .x((d, i) => xScale(data.indexOf(d)))
@@ -991,6 +1025,8 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
           .domain([0, maxVol])
           .range([paneHeights.volume, 0]);
 
+        stateRef.current.subPaneScales.volume = { scale: volY, y: currentY, height: paneHeights.volume };
+
         const barWidth = Math.max(1, (width / (xEnd - xStart)) * 0.8);
         visibleData.forEach(d => {
           const idx = data.indexOf(d);
@@ -1019,6 +1055,8 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
       if (showRSI) {
         const rsiPane = g.append('g').attr('class', 'sub-pane').attr('transform', `translate(0, ${currentY})`);
         const rsiY = d3.scaleLinear().domain([0, 100]).range([paneHeights.rsi, 0]);
+
+        stateRef.current.subPaneScales.rsi = { scale: rsiY, y: currentY, height: paneHeights.rsi };
 
         // RSI Shaded Zone (30-70)
         rsiPane.append('rect')
@@ -1159,6 +1197,8 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
         const macdMax = d3.max(visibleData, (d: any) => Math.max(d.macd || 0, d.macdSignal || 0, d.macdHistogram || 0)) ?? 1;
         const macdY = d3.scaleLinear().domain([macdMin, macdMax]).range([paneHeights.macd, 0]);
 
+        stateRef.current.subPaneScales.macd = { scale: macdY, y: currentY, height: paneHeights.macd };
+
         // Histogram
         const barWidth = Math.max(1, (width / (xEnd - xStart)) * 0.8);
         visibleData.forEach(d => {
@@ -1281,6 +1321,8 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
         const mfY = d3.scaleLinear()
           .domain([0, maxVol])
           .range([paneHeights.moneyFlow, 0]);
+
+        stateRef.current.subPaneScales.moneyFlow = { scale: mfY, y: currentY, height: paneHeights.moneyFlow };
 
         // Draw Bars
         visibleData.forEach(d => {
@@ -1848,8 +1890,11 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
 
     // Crosshair
     const crosshair = svg.append('g').attr('class', 'crosshair').style('display', 'none').style('pointer-events', 'none');
-    crosshair.append('line').attr('class', 'x-line').attr('stroke', isDark ? '#3f3f46' : '#94a3b8').attr('stroke-width', 1).attr('stroke-dasharray', '3,3');
-    crosshair.append('line').attr('class', 'y-line').attr('stroke', isDark ? '#3f3f46' : '#94a3b8').attr('stroke-width', 1).attr('stroke-dasharray', '3,3');
+    crosshair.append('line').attr('class', 'x-line').attr('stroke', isDark ? '#71717a' : '#64748b').attr('stroke-width', 1).attr('stroke-dasharray', '3,3');
+    crosshair.append('line').attr('class', 'y-line').attr('stroke', isDark ? '#71717a' : '#64748b').attr('stroke-width', 1).attr('stroke-dasharray', '3,3');
+
+    // Indicator value labels
+    const indicatorLabels = crosshair.append('g').attr('class', 'indicator-labels');
 
     // Crosshair labels
     const xLabel = crosshair.append('g').attr('class', 'x-label');
@@ -1888,8 +1933,21 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
         crosshair.select('.y-line').attr('y1', my).attr('y2', my).attr('x1', margin.left).attr('x2', width - margin.right);
 
         // Update labels
-        const dateStr = format(new Date(d.date), 'dd MMM yyyy');
-        const priceStr = y.invert(my).toFixed(2);
+        const dateStr = formatDate(d.date, 'dd MMM yyyy');
+        
+        let valueStr = y.invert(my).toFixed(2);
+        let activeScale = y;
+        let isSubPane = false;
+
+        // Check if mouse is over a sub-pane
+        const subPaneScales = stateRef.current.subPaneScales;
+        for (const [key, config] of Object.entries(subPaneScales)) {
+          if (my >= config.y && my <= config.y + config.height) {
+            valueStr = config.scale.invert(my - config.y).toFixed(2);
+            isSubPane = true;
+            break;
+          }
+        }
 
         const xText = xLabel.select('text').text(dateStr);
         const xTextWidth = (xText.node() as SVGTextElement).getComputedTextLength();
@@ -1898,7 +1956,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
         xLabel.select('rect').attr('width', xTextWidth + 10).attr('x', rectX).attr('y', rectY);
         xLabel.select('text').attr('x', cx).attr('y', rectY + 10);
 
-        const yText = yLabel.select('text').text(priceStr);
+        const yText = yLabel.select('text').text(valueStr);
         const yTextWidth = (yText.node() as SVGTextElement).getComputedTextLength();
         const yRectX = width - margin.right - yTextWidth - 10;
         const yRectY = my - 10;
@@ -1906,6 +1964,29 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
         yLabel.select('text').attr('x', yRectX + 5).attr('y', yRectY + 10);
 
         onHover(d);
+
+        // Update indicator labels
+        indicatorLabels.selectAll('*').remove();
+        let labelY = 10;
+        
+        const addLabel = (text: string, color: string) => {
+          const g = indicatorLabels.append('g').attr('transform', `translate(${margin.left + 10}, ${labelY})`);
+          const t = g.append('text')
+            .attr('fill', color)
+            .attr('font-size', '10px')
+            .attr('font-weight', 'bold')
+            .text(text);
+          labelY += 15;
+        };
+
+        if (d.rsi !== undefined && showRSI) addLabel(`RSI: ${d.rsi.toFixed(2)}`, '#f59e0b');
+        if (d.macd !== undefined && showMACD) addLabel(`MACD: ${d.macd.toFixed(2)} (Sig: ${d.macdSignal?.toFixed(2)})`, '#3b82f6');
+        if (showMoneyFlow) {
+          if (d.finalScore !== undefined) addLabel(`MFI Score: ${d.finalScore.toFixed(2)}`, '#10b981');
+          if (d.drawdownPct !== undefined) addLabel(`Drawdown: ${d.drawdownPct.toFixed(2)}%`, '#ef4444');
+        }
+        if (d.obv !== undefined && showOBV) addLabel(`OBV: ${d.obv.toLocaleString()}`, '#9333ea');
+        if (showVolume) addLabel(`VOL: ${d.volume.toLocaleString()}`, isDark ? '#52525b' : '#d4d4d8');
       }
     }).on('mouseleave', () => {
       crosshair.style('display', 'none');

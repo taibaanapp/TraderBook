@@ -16,6 +16,9 @@ interface AssetInfoProps {
   currency: string;
   interval: string;
   theme?: 'light' | 'dark';
+  rs?: number;
+  rsSlope?: number;
+  rsi?: number;
 }
 
 export const AssetInfo: React.FC<AssetInfoProps> = ({
@@ -25,9 +28,18 @@ export const AssetInfo: React.FC<AssetInfoProps> = ({
   percentChange,
   currency,
   interval,
-  theme
+  theme,
+  rs,
+  rsSlope,
+  rsi
 }) => {
   const isDark = theme === 'dark';
+
+  // RS Logic: Outperform if slope > 0, Underperform if slope < 0
+  const isOutperforming = rsSlope && rsSlope > 0;
+  
+  // Buy Signal: RSI < 35 (Panic) + RS Slope > 0 (Turning up)
+  const isBuySignal = rsi && rsi < 35 && rsSlope && rsSlope > 0;
 
   return (
     <div className={cn(
@@ -57,20 +69,50 @@ export const AssetInfo: React.FC<AssetInfoProps> = ({
         </div>
       </div>
       
-      <div className={cn("flex gap-8 border-l pl-8", isDark ? "border-zinc-800" : "border-zinc-100")}>
-        <div className="text-center">
-          <p className="text-[10px] uppercase font-bold text-zinc-400 mb-1">{t.interval}</p>
-          <p className={cn("text-sm font-bold flex items-center gap-1.5", isDark ? "text-zinc-300" : "text-zinc-700")}>
-            <Clock className="w-3.5 h-3.5 text-zinc-400" />
-            {interval === '1h' ? t.hourly : interval === '1d' ? t.daily : t.weekly}
-          </p>
-        </div>
-        <div className="text-center">
-          <p className="text-[10px] uppercase font-bold text-zinc-400 mb-1">{t.since}</p>
-          <p className={cn("text-sm font-bold flex items-center gap-1.5", isDark ? "text-zinc-300" : "text-zinc-700")}>
-            <Calendar className="w-3.5 h-3.5 text-zinc-400" />
-            {interval === '1h' ? t.last_2_years : t.jan_1_2020}
-          </p>
+      <div className="flex flex-wrap gap-8 items-center">
+        {rs !== undefined && (
+          <div className={cn("flex gap-8 border-l pl-8", isDark ? "border-zinc-800" : "border-zinc-100")}>
+            <div className="text-center">
+              <p className="text-[10px] uppercase font-bold text-zinc-400 mb-1">Relative Strength (RS)</p>
+              <div className="flex flex-col items-center">
+                <p className={cn("text-sm font-bold flex items-center gap-1.5", isDark ? "text-zinc-300" : "text-zinc-700")}>
+                  {rs.toFixed(4)}
+                </p>
+                <span className={cn(
+                  "text-[9px] font-black px-1.5 py-0.5 rounded mt-1 uppercase tracking-tighter",
+                  isOutperforming ? "bg-emerald-500/10 text-emerald-500" : "bg-rose-500/10 text-rose-500"
+                )}>
+                  {isOutperforming ? 'Outperform' : 'Underperform'}
+                </span>
+              </div>
+            </div>
+
+            {isBuySignal && (
+              <div className="text-center animate-pulse">
+                <p className="text-[10px] uppercase font-bold text-rose-500 mb-1">Signal</p>
+                <span className="bg-rose-500 text-white text-[10px] font-black px-2 py-1 rounded uppercase tracking-widest">
+                  Buy (Panic + RS Up)
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className={cn("flex gap-8 border-l pl-8", isDark ? "border-zinc-800" : "border-zinc-100")}>
+          <div className="text-center">
+            <p className="text-[10px] uppercase font-bold text-zinc-400 mb-1">{t.interval}</p>
+            <p className={cn("text-sm font-bold flex items-center gap-1.5", isDark ? "text-zinc-300" : "text-zinc-700")}>
+              <Clock className="w-3.5 h-3.5 text-zinc-400" />
+              {interval === '1h' ? t.hourly : interval === '1d' ? t.daily : t.weekly}
+            </p>
+          </div>
+          <div className="text-center">
+            <p className="text-[10px] uppercase font-bold text-zinc-400 mb-1">{t.since}</p>
+            <p className={cn("text-sm font-bold flex items-center gap-1.5", isDark ? "text-zinc-300" : "text-zinc-700")}>
+              <Calendar className="w-3.5 h-3.5 text-zinc-400" />
+              {interval === '1h' ? t.last_2_years : t.jan_1_2020}
+            </p>
+          </div>
         </div>
       </div>
     </div>

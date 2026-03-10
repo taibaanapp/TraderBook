@@ -1,4 +1,5 @@
 export const getFlag = (symbol: string) => {
+  if (!symbol) return '🇺🇸';
   const s = symbol.toUpperCase();
   if (s.endsWith('.BK')) return '🇹🇭';
   if (s.endsWith('.HK')) return '🇭🇰';

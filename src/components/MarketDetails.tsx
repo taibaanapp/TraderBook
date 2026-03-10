@@ -28,7 +28,7 @@ export const MarketDetails: React.FC<MarketDetailsProps> = ({ symbol, data, hove
 
   const getMarketStatus = () => {
     const now = new Date();
-    const isThai = symbol.endsWith('.BK');
+    const isThai = (symbol || '').endsWith('.BK');
     
     if (isThai) {
       // SET Market (GMT+7)

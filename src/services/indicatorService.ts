@@ -92,6 +92,40 @@ export function calculateCompositeMoneyFlow(data: StockData[]): StockData[] {
   });
 }
 
+/**
+ * Calculates Relative Strength (RS) compared to an index.
+ * RS = Stock Price / Index Price
+ * Also calculates RS Slope to determine if it's Outperforming or Underperforming.
+ */
+export function calculateRelativeStrength(stockData: StockData[], indexData: StockData[]): StockData[] {
+  if (!stockData || !indexData || stockData.length === 0 || indexData.length === 0) return stockData;
+
+  // Create a map for index data for quick lookup by date
+  const indexMap = new Map<string, number>();
+  indexData.forEach(d => indexMap.set(d.date, d.close));
+
+  // Keep track of the last known index close to handle missing dates
+  let lastIndexClose = indexData[0].close;
+  const rsValues: number[] = [];
+
+  return stockData.map((point, i) => {
+    const indexClose = indexMap.get(point.date) || lastIndexClose;
+    lastIndexClose = indexClose;
+
+    const rs = point.close / indexClose;
+    rsValues.push(rs);
+    
+    // Calculate RS Slope (simple 5-period slope)
+    let rsSlope = 0;
+    if (i >= 5) {
+      const prevRS = rsValues[i-5];
+      rsSlope = (rs - prevRS) / 5;
+    }
+
+    return { ...point, rs, rsSlope };
+  });
+}
+
 export function calculateEMA(data: StockData[], period: number, key: 'ema20' | 'ema50' | 'ema135'): StockData[] {
   if (!data || data.length === 0) return [];
   

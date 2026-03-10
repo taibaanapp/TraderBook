@@ -39,6 +39,7 @@ import { AdminPanel } from './components/AdminPanel';
 import { Logo } from './components/Logo';
 import { MarketTicker } from './components/MarketTicker';
 import { SimTradePanel } from './components/SimTradePanel';
+import { RRGChart } from './components/RRGChart';
 import { calculateCompositeMoneyFlow, calculateVWAP, calculateEMA, calculateRSI, calculateMACD } from './services/indicatorService';
 import { calculateMoneyFlow, generateMoneyFlowInsights } from './services/moneyFlowService';
 import { calculateIchimoku } from './services/ichimokuService';
@@ -88,7 +89,7 @@ export default function App() {
   const [chartType, setChartType] = useState<'line' | 'candlestick'>('line');
   const [hoveredData, setHoveredData] = useState<any | null>(null);
   const [resetTrigger, setResetTrigger] = useState(0);
-  const [activeTab, setActiveTab] = useState<'chart' | 'portfolio'>('chart');
+  const [activeTab, setActiveTab] = useState<'chart' | 'portfolio' | 'rrg'>('chart');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [marketFilter, setMarketFilter] = useState<'ALL' | 'TH' | 'US'>('ALL');
   const deferredSearchInput = useDeferredValue(searchInput);
@@ -130,6 +131,7 @@ export default function App() {
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
   const [adminClickCount, setAdminClickCount] = useState(0);
+  const searchFormRef = React.useRef<HTMLFormElement>(null);
 
   const [showSimTrade, setShowSimTrade] = useState(false);
   const [isStandaloneSimTrade, setIsStandaloneSimTrade] = useState(false);
@@ -262,9 +264,14 @@ export default function App() {
   };
 
   useEffect(() => {
-    const handleClickOutside = () => setContextMenu(null);
-    window.addEventListener('click', handleClickOutside);
-    return () => window.removeEventListener('click', handleClickOutside);
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchFormRef.current && !searchFormRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+      setContextMenu(null);
+    };
+    window.addEventListener('mousedown', handleClickOutside);
+    return () => window.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const handleGeminiAnalysis = async (data: any) => {
@@ -820,7 +827,7 @@ export default function App() {
   }, [symbol, interval]);
 
   useEffect(() => {
-    if (stockData && stockData.data && stockData.data.length >= 2) {
+    if (stockData && stockData.symbol === symbol && stockData.data && stockData.data.length >= 2) {
       const latest = stockData.data[stockData.data.length - 1].close;
       const previous = stockData.data[stockData.data.length - 2].close;
       const pctChange = ((latest - previous) / previous) * 100;
@@ -923,7 +930,7 @@ export default function App() {
         <div className="max-w-md space-y-8">
           <div className="relative mx-auto w-24 h-24">
             <div className="absolute inset-0 bg-rose-500/20 rounded-3xl blur-2xl animate-pulse" />
-            <div className="relative w-24 h-24 bg-zinc-900 rounded-3xl flex items-center justify-center border border-zinc-800 shadow-2xl">
+            <div className="relative w-24 h-24 bg-zinc-950 rounded-3xl flex items-center justify-center border border-zinc-700 shadow-2xl">
               <Monitor className="w-12 h-12 text-white" />
             </div>
           </div>
@@ -937,7 +944,7 @@ export default function App() {
           </div>
 
           <div className="pt-4 flex flex-col items-center gap-4">
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-900 rounded-full border border-zinc-800">
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-950 rounded-full border border-zinc-700">
               <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
               <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Analytical Workspace Required</span>
             </div>
@@ -956,7 +963,7 @@ export default function App() {
       {/* Header */}
       <header className={cn(
         "border-b sticky top-0 z-50 transition-colors duration-300",
-        theme === 'dark' ? "bg-[#1e293b] border-zinc-800" : "bg-white border-zinc-200"
+        theme === 'dark' ? "bg-[#030712] border-zinc-700" : "bg-white border-zinc-200"
       )}>
         <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-10 h-16 flex items-center justify-between">
           <div 
@@ -978,41 +985,58 @@ export default function App() {
             </div>
           </div>
 
-          <form onSubmit={handleSearch} className="flex-1 max-w-xl mx-4 sm:mx-8 relative">
-            <div className="relative group">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 group-focus-within:text-zinc-900 dark:group-focus-within:text-zinc-100 transition-colors" />
-              <input
-                type="text"
-                value={searchInput}
-                onChange={(e) => { setSearchInput(e.target.value); setShowSuggestions(true); }}
-                onFocus={() => setShowSuggestions(true)}
-                placeholder={TRANSLATIONS.TH.common.search_placeholder}
-                className={cn(
-                  "w-full rounded-xl pl-10 pr-10 py-2 text-sm transition-all outline-none border",
-                  theme === 'dark' 
-                    ? "bg-zinc-800 border-zinc-700 text-zinc-100 focus:bg-zinc-700 focus:border-zinc-500" 
-                    : "bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-900"
+          <form 
+            ref={searchFormRef}
+            onSubmit={handleSearch} 
+            className="flex-1 max-w-xl mx-4 sm:mx-8 relative"
+          >
+            <div className="relative group flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 group-focus-within:text-zinc-900 dark:group-focus-within:text-zinc-100 transition-colors" />
+                <input
+                  type="text"
+                  value={searchInput}
+                  onChange={(e) => { setSearchInput(e.target.value); setShowSuggestions(true); }}
+                  onFocus={() => setShowSuggestions(true)}
+                  placeholder={TRANSLATIONS.TH.common.search_placeholder}
+                  className={cn(
+                    "w-full rounded-xl pl-10 pr-10 py-2 text-sm transition-all outline-none border",
+                    theme === 'dark' 
+                      ? "bg-zinc-800 border-zinc-700 text-zinc-100 focus:bg-zinc-700 focus:border-zinc-500" 
+                      : "bg-zinc-100 border-transparent focus:bg-white focus:border-zinc-900"
+                  )}
+                />
+                {searchInput && (
+                  <button
+                    type="button"
+                    onClick={() => { setSearchInput(''); setShowSuggestions(false); }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-zinc-200 dark:hover:bg-zinc-600 rounded-full transition-colors"
+                  >
+                    <X className="w-3 h-3 text-zinc-400" />
+                  </button>
                 )}
-              />
-              {searchInput && (
-                <button
-                  type="button"
-                  onClick={() => { setSearchInput(''); setShowSuggestions(false); }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-zinc-200 dark:hover:bg-zinc-600 rounded-full transition-colors"
-                >
-                  <X className="w-3 h-3 text-zinc-400" />
-                </button>
-              )}
+              </div>
+              <button
+                type="submit"
+                className={cn(
+                  "px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-sm hover:shadow-md active:scale-95",
+                  theme === 'dark'
+                    ? "bg-rose-600 text-white hover:bg-rose-700"
+                    : "bg-rose-500 text-white hover:bg-rose-600"
+                )}
+              >
+                {TRANSLATIONS.TH.common.search || 'ค้นหา'}
+              </button>
             </div>
             
             {showSuggestions && (
               <div className={cn(
                 "absolute top-full left-0 right-0 mt-2 rounded-xl shadow-2xl overflow-hidden z-50 border",
-                theme === 'dark' ? "bg-zinc-800 border-zinc-700" : "bg-white border-zinc-200"
+                theme === 'dark' ? "bg-zinc-900 border-zinc-700 shadow-[0_0_20px_rgba(16,185,129,0.05)]" : "bg-white border-zinc-200 shadow-2xl"
               )}>
                 <div className={cn(
                   "flex p-1 border-b",
-                  theme === 'dark' ? "bg-zinc-900 border-zinc-700" : "bg-zinc-50 border-zinc-100"
+                  theme === 'dark' ? "bg-zinc-950 border-zinc-700" : "bg-zinc-50 border-zinc-100"
                 )}>
                   {(['ALL', 'TH', 'US'] as const).map((m) => (
                     <button
@@ -1164,6 +1188,17 @@ export default function App() {
                 <TrendingUp className="w-3.5 h-3.5" /> Vision
               </button>
               <button
+                onClick={() => setActiveTab('rrg')}
+                className={cn(
+                  "px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-md transition-all flex items-center gap-2",
+                  activeTab === 'rrg' 
+                    ? (theme === 'dark' ? "bg-zinc-700 text-zinc-100 shadow-sm" : "bg-white text-zinc-900 shadow-sm")
+                    : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300"
+                )}
+              >
+                <Activity className="w-3.5 h-3.5" /> RRG
+              </button>
+              <button
                 onClick={() => setActiveTab('portfolio')}
                 className={cn(
                   "px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-md transition-all flex items-center gap-2",
@@ -1190,7 +1225,9 @@ export default function App() {
       )}
 
       <main className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-10 py-8">
-        {error ? (
+        {activeTab === 'rrg' ? (
+          <RRGChart theme={theme} />
+        ) : error ? (
           <div className={cn(
             "border rounded-2xl p-8 flex flex-col items-center justify-center text-center",
             theme === 'dark' ? "bg-red-900/10 border-red-900/20" : "bg-red-50 border-red-100"
@@ -1226,7 +1263,7 @@ export default function App() {
               {showRecentStocks && recentStocks.length > 0 && (
                 <div className={cn(
                   "rounded-2xl border p-4 transition-colors duration-300",
-                  theme === 'dark' ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200"
+                  theme === 'dark' ? "bg-zinc-950 border-zinc-700" : "bg-white border-zinc-200"
                 )}>
                   <div className="flex items-center gap-2 mb-3">
                     <HistoryIcon className={cn("w-4 h-4", theme === 'dark' ? "text-zinc-400" : "text-zinc-500")} />
@@ -1337,7 +1374,7 @@ export default function App() {
               {/* Chart */}
               <div className={cn(
                 "rounded-2xl border p-6 h-[500px] relative overflow-hidden group transition-colors duration-300",
-                theme === 'dark' ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200",
+                theme === 'dark' ? "bg-zinc-950 border-zinc-700 shadow-xl" : "bg-white border-zinc-200 shadow-xl",
                 isFullscreen && "fixed inset-0 z-[100] h-screen w-screen rounded-none p-0 flex flex-col"
               )}>
                 {isFullscreen && (
@@ -1415,6 +1452,7 @@ export default function App() {
                   <TradingChart 
                     symbol={symbol}
                     data={processedData} 
+                    exchangeTimezoneName={stockData?.exchangeTimezoneName}
                     showVWAP={showVWAP} 
                     showOBV={showOBV} 
                     showVolume={showVolume}
@@ -1458,7 +1496,7 @@ export default function App() {
                     <div 
                       className={cn(
                         "fixed z-[100] w-56 py-2 rounded-xl border shadow-2xl transition-all",
-                        theme === 'dark' ? "bg-[#1e293b] border-zinc-800" : "bg-white border-zinc-200"
+                        theme === 'dark' ? "bg-[#030712] border-zinc-700" : "bg-white border-zinc-200"
                       )}
                       style={{ left: contextMenu.x, top: contextMenu.y }}
                     >
@@ -1510,7 +1548,7 @@ export default function App() {
                   {moneyFlowInsights.summary && (
                     <div className={cn(
                       "rounded-2xl border p-6 transition-colors duration-300 animate-in fade-in slide-in-from-top-4",
-                      theme === 'dark' ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200"
+                      theme === 'dark' ? "bg-zinc-950 border-zinc-700" : "bg-white border-zinc-200"
                     )}>
                       <div className="flex items-center gap-3 mb-5">
                         <div className="p-2 rounded-lg bg-blue-500/10">
@@ -1552,7 +1590,7 @@ export default function App() {
                       </div>
 
                       {moneyFlowInsights.insights.length > 0 && (
-                        <div className="mt-6 space-y-3 border-t border-zinc-800/50 pt-5">
+                        <div className="mt-6 space-y-3 border-t border-zinc-700/50 pt-5">
                           {moneyFlowInsights.insights.map((insight, idx) => (
                             <div key={idx} className="flex gap-3 items-start">
                               <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
@@ -1736,7 +1774,7 @@ export default function App() {
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
-                        <tr className={cn("border-b", theme === 'dark' ? "border-zinc-800" : "border-zinc-100")}>
+                        <tr className={cn("border-b", theme === 'dark' ? "border-zinc-700" : "border-zinc-100")}>
                           <th className="text-left py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Asset</th>
                           <th className="text-right py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Shares</th>
                           <th className="text-right py-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Avg Cost</th>
@@ -1761,7 +1799,7 @@ export default function App() {
                           return (
                             <tr key={s.symbol} className={cn(
                               "border-b transition-colors group",
-                              theme === 'dark' ? "border-zinc-800/50 hover:bg-zinc-800/30" : "border-zinc-50 hover:bg-zinc-50/50"
+                              theme === 'dark' ? "border-zinc-700/50 hover:bg-zinc-800/30" : "border-zinc-50 hover:bg-zinc-50/50"
                             )}>
                               <td className="py-4">
                                 <button 

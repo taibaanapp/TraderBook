@@ -613,7 +613,7 @@ async function startServer() {
       };
 
       // Determine Index Symbol
-      const indexSymbol = symbol.endsWith('.BK') ? '^SET.BK' : '^GSPC';
+      const indexSymbol = (symbol || '').endsWith('.BK') ? '^SET.BK' : '^GSPC';
 
       // Helper to handle validation errors and return the result anyway
       const safeYahooCall = async (fn: () => Promise<any>) => {
@@ -652,7 +652,7 @@ async function startServer() {
         ];
 
         // If it's a Thai stock, also try to fetch SET index summary for industry PE fallback
-        if (symbol.endsWith('.BK')) {
+        if ((symbol || '').endsWith('.BK')) {
           promises.push(
             safeYahooCall(() => {
               logExternalRequest('query2.finance.yahoo.com', 'Yahoo: SET Index Quote');
@@ -789,6 +789,8 @@ async function startServer() {
       const responseData = {
         symbol: chartResult.meta.symbol,
         currency: chartResult.meta.currency,
+        timezone: chartResult.meta.timezone,
+        exchangeTimezoneName: chartResult.meta.exchangeTimezoneName,
         fullExchangeName: quoteResult?.fullExchangeName,
         shortName: quoteResult?.shortName || quoteResult?.longName,
         industry: profileResult?.assetProfile?.industry || quoteResult?.industry || quoteResult?.sector,

@@ -52,6 +52,8 @@ export interface StockData {
 export interface ApiResponse {
   symbol: string;
   currency: string;
+  timezone?: string;
+  exchangeTimezoneName?: string;
   data: StockData[];
   shortName?: string;
   industry?: string;
@@ -92,4 +94,20 @@ export interface StockNote {
   price: number;
   content: string;
   date: string;
+}
+
+export interface GhostCandle extends StockData {
+  isGhost: boolean;
+  confidence: number;
+  patternName?: string;
+}
+
+export interface ScenarioResult {
+  candles: GhostCandle[];
+  setup: string;
+  patternName: string;
+  trigger: string;
+  invalidation: number;
+  confidence: number;
+  type: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
 }
