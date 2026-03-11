@@ -36,28 +36,49 @@ interface MainContentProps {
   interval: string;
   setChartInterval: (interval: string) => void;
   showVWAP: boolean;
+  setShowVWAP: (show: boolean) => void;
   showOBV: boolean;
+  setShowOBV: (show: boolean) => void;
   showVolume: boolean;
+  setShowVolume: (show: boolean) => void;
   showEMAX: boolean;
+  setShowEMAX: (show: boolean) => void;
   showEMA20: boolean;
+  setShowEMA20: (show: boolean) => void;
   showEMA50: boolean;
+  setShowEMA50: (show: boolean) => void;
   showRSI: boolean;
+  setShowRSI: (show: boolean) => void;
   showMACD: boolean;
+  setShowMACD: (show: boolean) => void;
   showElliottWaves: boolean;
+  setShowElliottWaves: (show: boolean) => void;
   showVolumeSpikes: boolean;
+  setShowVolumeSpikes: (show: boolean) => void;
   showIchimoku: boolean;
+  setShowIchimoku: (show: boolean) => void;
   showMoneyFlow: boolean;
+  setShowMoneyFlow: (show: boolean) => void;
   showPickBo: boolean;
+  setShowPickBo: (show: boolean) => void;
+  showPriceRange: boolean;
+  setShowPriceRange: (show: boolean) => void;
   isInvertedY: boolean;
+  setIsInvertedY: (show: boolean) => void;
   isLogScale: boolean;
+  setIsLogScale: (show: boolean) => void;
   chartType: 'line' | 'candlestick';
+  setChartType: (type: 'line' | 'candlestick') => void;
   isFullscreen: boolean;
   setIsFullscreen: (fullscreen: boolean) => void;
   showChartControls: boolean;
   showNotebook: boolean;
   isSimulationMode: boolean;
+  setIsSimulationMode: (show: boolean) => void;
   isSmartSRMode: boolean;
+  setIsSmartSRMode: (show: boolean) => void;
   isScenarioMode: boolean;
+  onToggleScenario: () => void;
   scenarioResult: ScenarioResult | null;
   selectedSRDate: string | null;
   setSelectedSRDate: (date: string | null) => void;
@@ -95,28 +116,49 @@ export const MainContent: React.FC<MainContentProps> = ({
   interval,
   setChartInterval,
   showVWAP,
+  setShowVWAP,
   showOBV,
+  setShowOBV,
   showVolume,
+  setShowVolume,
   showEMAX,
+  setShowEMAX,
   showEMA20,
+  setShowEMA20,
   showEMA50,
+  setShowEMA50,
   showRSI,
+  setShowRSI,
   showMACD,
+  setShowMACD,
   showElliottWaves,
+  setShowElliottWaves,
   showVolumeSpikes,
+  setShowVolumeSpikes,
   showIchimoku,
+  setShowIchimoku,
   showMoneyFlow,
+  setShowMoneyFlow,
   showPickBo,
+  setShowPickBo,
+  showPriceRange,
+  setShowPriceRange,
   isInvertedY,
+  setIsInvertedY,
   isLogScale,
+  setIsLogScale,
   chartType,
+  setChartType,
   isFullscreen,
   setIsFullscreen,
   showChartControls,
   showNotebook,
   isSimulationMode,
+  setIsSimulationMode,
   isSmartSRMode,
+  setIsSmartSRMode,
   isScenarioMode,
+  onToggleScenario,
   scenarioResult,
   selectedSRDate,
   setSelectedSRDate,
@@ -180,10 +222,12 @@ export const MainContent: React.FC<MainContentProps> = ({
             <div className="xl:col-span-3">
               <AssetInfo 
                 symbol={symbol} 
-                price={latestPrice || 0} 
-                change={priceChange} 
+                latestPrice={latestPrice || 0} 
+                priceChange={priceChange} 
                 percentChange={percentChange}
-                data={stockData}
+                currency="THB"
+                interval={interval}
+                theme={theme}
               />
             </div>
             <div className="xl:col-span-1">
@@ -325,6 +369,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                       showIchimoku={showIchimoku}
                       showMoneyFlow={showMoneyFlow}
                       showPickBo={showPickBo}
+                      showPriceRange={showPriceRange}
                       isInvertedY={isInvertedY}
                       chartType={chartType}
                       onHover={setHoveredData}
@@ -355,16 +400,6 @@ export const MainContent: React.FC<MainContentProps> = ({
                     />
                     
                     <Legend 
-                      data={hoveredData || processedData[processedData.length - 1]} 
-                      showVWAP={showVWAP}
-                      showOBV={showOBV}
-                      showEMAX={showEMAX}
-                      showEMA20={showEMA20}
-                      showEMA50={showEMA50}
-                      showRSI={showRSI}
-                      showMACD={showMACD}
-                      showIchimoku={showIchimoku}
-                      showMoneyFlow={showMoneyFlow}
                       theme={theme}
                     />
 
@@ -410,23 +445,52 @@ export const MainContent: React.FC<MainContentProps> = ({
               {showChartControls && (
                 <div className="absolute top-4 right-4 z-20 animate-in slide-in-from-right-4">
                   <ChartControls 
-                    showVWAP={showVWAP} setShowVWAP={setShowVWAP}
-                    showOBV={showOBV} setShowOBV={setShowOBV}
-                    showVolume={showVolume} setShowVolume={setShowVolume}
-                    showEMAX={showEMAX} setShowEMAX={setShowEMAX}
-                    showEMA20={showEMA20} setShowEMA20={setShowEMA20}
-                    showEMA50={showEMA50} setShowEMA50={setShowEMA50}
-                    showRSI={showRSI} setShowRSI={setShowRSI}
-                    showMACD={showMACD} setShowMACD={setShowMACD}
-                    showElliottWaves={showElliottWaves} setShowElliottWaves={setShowElliottWaves}
-                    showVolumeSpikes={showVolumeSpikes} setShowVolumeSpikes={setShowVolumeSpikes}
-                    showIchimoku={showIchimoku} setShowIchimoku={setShowIchimoku}
-                    showMoneyFlow={showMoneyFlow} setShowMoneyFlow={setShowMoneyFlow}
-                    showPickBo={showPickBo} setShowPickBo={setShowPickBo}
-                    isInvertedY={isInvertedY} setIsInvertedY={setIsInvertedY}
-                    isLogScale={isLogScale} setIsLogScale={setIsLogScale}
-                    chartType={chartType} setChartType={setChartType}
+                    interval={interval}
+                    setInterval={setChartInterval}
+                    chartType={chartType}
+                    setChartType={setChartType}
+                    showVWAP={showVWAP}
+                    setShowVWAP={setShowVWAP}
+                    showOBV={showOBV}
+                    setShowOBV={setShowOBV}
+                    showVolume={showVolume}
+                    setShowVolume={setShowVolume}
+                    showEMAX={showEMAX}
+                    setShowEMAX={setShowEMAX}
+                    showEMA20={showEMA20}
+                    setShowEMA20={setShowEMA20}
+                    showEMA50={showEMA50}
+                    setShowEMA50={setShowEMA50}
+                    showRSI={showRSI}
+                    setShowRSI={setShowRSI}
+                    showMACD={showMACD}
+                    setShowMACD={setShowMACD}
+                    showElliottWaves={showElliottWaves}
+                    setShowElliottWaves={setShowElliottWaves}
+                    showVolumeSpikes={showVolumeSpikes}
+                    setShowVolumeSpikes={setShowVolumeSpikes}
+                    showIchimoku={showIchimoku}
+                    setShowIchimoku={setShowIchimoku}
+                    showMoneyFlow={showMoneyFlow}
+                    setShowMoneyFlow={setShowMoneyFlow}
+                    showPickBo={showPickBo}
+                    setShowPickBo={setShowPickBo}
+                    showPriceRange={showPriceRange}
+                    setShowPriceRange={setShowPriceRange}
+                    isInvertedY={isInvertedY}
+                    setIsInvertedY={setIsInvertedY}
+                    isLogScale={isLogScale}
+                    setIsLogScale={setIsLogScale}
+                    isSimulationMode={isSimulationMode}
+                    setIsSimulationMode={setIsSimulationMode}
+                    isSmartSRMode={isSmartSRMode}
+                    setIsSmartSRMode={setIsSmartSRMode}
+                    isScenarioMode={isScenarioMode}
+                    onToggleScenario={onToggleScenario}
                     onReset={() => setResetTrigger(prev => prev + 1)}
+                    onRefresh={() => fetchData(symbol, interval, true)}
+                    isFullscreen={isFullscreen}
+                    onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
                     theme={theme}
                   />
                 </div>
@@ -436,7 +500,7 @@ export const MainContent: React.FC<MainContentProps> = ({
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
             {showNotebook && (
-              <StockNotebook symbol={symbol} theme={theme} />
+              <StockNotebook symbol={symbol} currentPrice={latestPrice || 0} theme={theme} />
             )}
             {showSimTrade && (
               <div className="space-y-6">
@@ -471,7 +535,7 @@ export const MainContent: React.FC<MainContentProps> = ({
         </>
       ) : (
         <div className="animate-in fade-in slide-in-from-bottom-4">
-          <ReversalDashboard theme={theme} />
+          <ReversalDashboard theme={theme} isOpen={true} onClose={() => {}} />
         </div>
       )}
     </div>

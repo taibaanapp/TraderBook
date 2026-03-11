@@ -27,8 +27,9 @@ interface ChartProps {
   showIchimoku?: boolean;
   showMoneyFlow?: boolean;
   showPickBo?: boolean;
+  showPriceRange?: boolean;
   isInvertedY?: boolean;
-  chartType: 'line' | 'candlestick';
+  chartType: 'line' | 'candlestick' | 'powerc';
   onHover: (data: StockData | null) => void;
   onRightClick: (data: StockData, x: number, y: number) => void;
   onElliottWaveClick?: (data: StockData, label: string) => void;
@@ -71,6 +72,7 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
   showIchimoku,
   showMoneyFlow,
   showPickBo,
+  showPriceRange,
   isInvertedY,
   chartType,
   onHover,
@@ -115,11 +117,19 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
     isResistance: boolean;
   } | null>(null);
 
+  const [priceRangePoints, setPriceRangePoints] = React.useState<{ index: number; price: number }[]>([]);
+
   useEffect(() => {
     if (!showPickBo) {
       setPickBoLevels(null);
     }
   }, [showPickBo]);
+
+  useEffect(() => {
+    if (!showPriceRange) {
+      setPriceRangePoints([]);
+    }
+  }, [showPriceRange]);
 
   const rsiDivergences = useMemo(() => detectDivergences(data, 60), [data]);
   const macdDivergences = useMemo(() => detectMACDDivergences(data, 60), [data]);
@@ -393,6 +403,22 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
     spikeGlow.append('stop').attr('offset', '0%').attr('stop-color', '#fbbf24').attr('stop-opacity', 0.6);
     spikeGlow.append('stop').attr('offset', '100%').attr('stop-color', '#fbbf24').attr('stop-opacity', 0);
 
+    // PowerC Bullish Gradient (Light Green to Dark Green)
+    const powercBullish = defs.append('linearGradient')
+      .attr('id', 'powerc-bullish')
+      .attr('x1', '0%').attr('y1', '0%')
+      .attr('x2', '0%').attr('y2', '100%');
+    powercBullish.append('stop').attr('offset', '0%').attr('stop-color', '#4ade80'); // Light Green
+    powercBullish.append('stop').attr('offset', '100%').attr('stop-color', '#166534'); // Dark Green
+
+    // PowerC Bearish Gradient (Orange to Dark Red)
+    const powercBearish = defs.append('linearGradient')
+      .attr('id', 'powerc-bearish')
+      .attr('x1', '0%').attr('y1', '0%')
+      .attr('x2', '0%').attr('y2', '100%');
+    powercBearish.append('stop').attr('offset', '0%').attr('stop-color', '#f97316'); // Orange
+    powercBearish.append('stop').attr('offset', '100%').attr('stop-color', '#7f1d1d'); // Dark Red
+
     // Scales
     const xMax = isScenarioMode && scenarioResult ? data.length + scenarioResult.candles.length + 5 : data.length - 1;
     const x = d3.scaleLinear()
@@ -633,13 +659,45 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
             .attr('stroke-dasharray', d2.isSimulated ? '4,4' : 'none');
         }
       } else {
-        // Candlesticks
+        // Candlesticks & PowerC
         const candleWidth = Math.max(1, (width / (xEnd - xStart)) * 0.7);
+        
+        // Calculate average body for PowerC highlighting
+        const avgBody = d3.mean(visibleData, d => Math.abs(d.close - d.open)) || 0;
+
         visibleData.forEach(d => {
           if (isNaN(d.open) || isNaN(d.close)) return;
           const idx = drawData.indexOf(d);
-          const color = d.close >= d.open ? '#10b981' : '#ef4444';
           
+          let color = d.close >= d.open ? '#10b981' : '#ef4444';
+          let fill: string = color;
+          let stroke: string = 'none';
+          let strokeWidth: number = 0;
+          let opacity: number = d.isSimulated ? 0.5 : 1;
+
+          const rsi = d.rsi || 50;
+          const isPowerC = chartType === 'powerc';
+          
+          if (isPowerC) {
+            if (rsi >= 70) {
+              // Bearish Range (Orange -> Dark Red)
+              fill = 'url(#powerc-bearish)';
+              color = '#ef4444';
+            } else if (rsi <= 30) {
+              // Bullish Range (Light Green -> Dark Green)
+              fill = 'url(#powerc-bullish)';
+              color = '#10b981';
+            } else {
+              // Neutral Range (31-69) - Subtle Gray
+              fill = 'none';
+              // Adjusted for better visibility while remaining subtle
+              stroke = isDark ? '#52525b' : '#a1a1aa'; 
+              strokeWidth = 1;
+              color = stroke;
+              opacity = 0.6;
+            }
+          }
+
           // Volume Spike Effect (Old Money Tracker)
           if (showVolumeSpikes && d.isVolumeSpike) {
              // Glow effect
@@ -689,17 +747,42 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
             .attr('y1', yScale(d.low))
             .attr('y2', yScale(d.high))
             .attr('stroke', color)
-            .attr('stroke-width', 1);
+            .attr('stroke-width', 1)
+            .attr('opacity', opacity);
 
           chartContent.append('rect')
             .attr('x', xScale(idx) - candleWidth / 2)
             .attr('y', yScale(Math.max(d.open, d.close)))
             .attr('width', candleWidth)
             .attr('height', Math.abs(yScale(d.open) - yScale(d.close)) || 1)
-            .attr('fill', color)
-            .attr('opacity', d.isSimulated ? 0.5 : 1)
-            .attr('stroke', d.isSimulated ? '#f43f5e' : 'none')
-            .attr('stroke-width', d.isSimulated ? 1 : 0);
+            .attr('fill', fill)
+            .attr('stroke', stroke)
+            .attr('stroke-width', strokeWidth)
+            .attr('opacity', opacity);
+
+          // Power Indicator for PowerC
+          if (isPowerC && (rsi >= 70 || rsi <= 30)) {
+            const isPower = Math.abs(d.close - d.open) > avgBody * 1.5;
+            if (isPower) {
+              // Glow effect
+              chartContent.append('rect')
+                .attr('x', xScale(idx) - candleWidth * 0.75)
+                .attr('y', yScale(Math.max(d.open, d.close)) - 2)
+                .attr('width', candleWidth * 1.5)
+                .attr('height', Math.abs(yScale(d.open) - yScale(d.close)) + 4)
+                .attr('fill', color)
+                .attr('opacity', 0.15)
+                .attr('filter', 'blur(3px)');
+              
+              // "P" label above
+              chartContent.append('text')
+                .attr('x', xScale(idx))
+                .attr('y', yScale(d.high) - 8)
+                .attr('text-anchor', 'middle')
+                .attr('class', 'text-[7px] font-black fill-zinc-500 opacity-80')
+                .text('P');
+            }
+          }
             
           // Elliott Wave Labels
           if (showElliottWaves && d.elliottWaveLabel) {
@@ -1759,6 +1842,92 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
           .attr('font-weight', 'black')
           .text(`61.8%: ${l2.toFixed(2)}`);
       }
+
+      // Price Range Tool
+      if (showPriceRange && priceRangePoints.length > 0) {
+        const priceRangeGroup = chartContent.append('g').attr('class', 'price-range-layer');
+        
+        priceRangePoints.forEach((point, i) => {
+          const rangeColor = i === 0 ? '#3b82f6' : (point.price >= priceRangePoints[i-1].price ? '#1e40af' : '#991b1b');
+
+          // Point
+          priceRangeGroup.append('circle')
+            .attr('cx', xScale(point.index))
+            .attr('cy', yScale(point.price))
+            .attr('r', 4)
+            .attr('fill', rangeColor)
+            .attr('stroke', 'white')
+            .attr('stroke-width', 1.5);
+
+          // Label
+          priceRangeGroup.append('text')
+            .attr('x', xScale(point.index))
+            .attr('y', yScale(point.price) - 8)
+            .attr('text-anchor', 'middle')
+            .attr('fill', rangeColor)
+            .attr('font-size', '9px')
+            .attr('font-weight', 'bold')
+            .attr('class', 'drop-shadow-sm')
+            .text(i === 0 ? `Start: ${point.price.toFixed(2)}` : `${point.price.toFixed(2)}`);
+
+          if (i > 0) {
+            const prev = priceRangePoints[i - 1];
+            const diff = point.price - prev.price;
+            const segmentColor = diff >= 0 ? '#1e40af' : '#991b1b';
+            const percent = (diff / prev.price) * 100;
+            const bars = Math.abs(point.index - prev.index);
+            
+            // Connecting Line
+            priceRangeGroup.append('line')
+              .attr('x1', xScale(prev.index))
+              .attr('y1', yScale(prev.price))
+              .attr('x2', xScale(point.index))
+              .attr('y2', yScale(point.price))
+              .attr('stroke', segmentColor)
+              .attr('stroke-width', 1.5)
+              .attr('stroke-dasharray', '3,2');
+
+            // Calculation Results
+            const midX = (xScale(prev.index) + xScale(point.index)) / 2;
+            const midY = (yScale(prev.price) + yScale(point.price)) / 2;
+
+            const dx = xScale(point.index) - xScale(prev.index);
+            const dy = yScale(point.price) - yScale(prev.price);
+            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            
+            let textRotation = angle;
+            if (textRotation > 90 || textRotation < -90) {
+              textRotation += 180;
+            }
+
+            const resultText = `${diff > 0 ? '+' : ''}${diff.toFixed(2)} (${percent > 0 ? '+' : ''}${percent.toFixed(2)}%) | ${bars} Bars`;
+            
+            const segmentLabelGroup = priceRangeGroup.append('g')
+              .attr('transform', `translate(${midX}, ${midY}) rotate(${textRotation})`);
+            
+            // Optimized width estimation to avoid getBBox() which causes layout thrashing
+            const textWidth = resultText.length * 5.2;
+
+            segmentLabelGroup.append('rect')
+              .attr('x', -textWidth / 2 - 3)
+              .attr('y', -18)
+              .attr('width', textWidth + 6)
+              .attr('height', 14)
+              .attr('rx', 3)
+              .attr('fill', segmentColor)
+              .attr('opacity', 0.85);
+
+            segmentLabelGroup.append('text')
+              .attr('x', 0)
+              .attr('y', -8)
+              .attr('text-anchor', 'middle')
+              .attr('fill', 'white')
+              .attr('font-size', '9px')
+              .attr('font-weight', 'black')
+              .text(resultText);
+          }
+        });
+      }
     };
 
     const zoom = d3.zoom<SVGSVGElement, unknown>()
@@ -2059,6 +2228,21 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
         }
         return;
       }
+
+      if (showPriceRange) {
+        const [mx, my] = d3.pointer(event);
+        const currentX = stateRef.current.lastTransform.rescaleX(x);
+        const currentY = stateRef.current.isYAuto ? y : stateRef.current.lastTransform.rescaleY(y);
+        
+        const idx = Math.round(currentX.invert(mx));
+        const yPrice = currentY.invert(my);
+        const d = data[idx];
+        const price = d ? d.close : yPrice;
+
+        setPriceRangePoints(prev => [...prev, { index: idx, price }]);
+        return;
+      }
+
       if (isSmartSRMode && !selectedSRDate) {
         const [mx] = d3.pointer(event);
         const currentX = stateRef.current.lastTransform.rescaleX(x);
@@ -2111,7 +2295,9 @@ export const TradingChart = forwardRef<TradingChartHandle, ChartProps>(({
     showVolumeSpikes,
     showPickBo,
     pickBoLevels,
-    processedData
+    processedData,
+    showPriceRange,
+    priceRangePoints
   ]);
 
   return (

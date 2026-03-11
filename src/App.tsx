@@ -83,10 +83,11 @@ export default function App() {
   const [showIchimoku, setShowIchimoku] = useState(false);
   const [showMoneyFlow, setShowMoneyFlow] = useState(false);
   const [showPickBo, setShowPickBo] = useState(false);
+  const [showPriceRange, setShowPriceRange] = useState(false);
   const [isInvertedY, setIsInvertedY] = useState(false);
   const [isSimulationMode, setIsSimulationMode] = useState(false);
   const [simulationRate, setSimulationRate] = useState(-1.5);
-  const [chartType, setChartType] = useState<'line' | 'candlestick'>('line');
+  const [chartType, setChartType] = useState<'line' | 'candlestick' | 'powerc'>('line');
   const [hoveredData, setHoveredData] = useState<any | null>(null);
   const [resetTrigger, setResetTrigger] = useState(0);
   const [activeTab, setActiveTab] = useState<'chart' | 'portfolio' | 'rrg'>('chart');
@@ -423,6 +424,11 @@ export default function App() {
       setShowPickBo(savedPickBo === 'true');
     }
 
+    const savedPriceRange = localStorage.getItem('showPriceRange');
+    if (savedPriceRange !== null) {
+      setShowPriceRange(savedPriceRange === 'true');
+    }
+
     const savedLogScale = localStorage.getItem('isLogScale');
     if (savedLogScale !== null) {
       setIsLogScale(savedLogScale === 'true');
@@ -526,6 +532,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('showPickBo', String(showPickBo));
   }, [showPickBo]);
+
+  useEffect(() => {
+    localStorage.setItem('showPriceRange', String(showPriceRange));
+  }, [showPriceRange]);
 
   useEffect(() => {
     localStorage.setItem('isLogScale', String(isLogScale));
@@ -1349,6 +1359,8 @@ export default function App() {
                   setShowMoneyFlow={setShowMoneyFlow}
                   showPickBo={showPickBo}
                   setShowPickBo={setShowPickBo}
+                  showPriceRange={showPriceRange}
+                  setShowPriceRange={setShowPriceRange}
                   isInvertedY={isInvertedY}
                   setIsInvertedY={setIsInvertedY}
                   isLogScale={isLogScale}
@@ -1410,6 +1422,8 @@ export default function App() {
                       setShowMoneyFlow={setShowMoneyFlow}
                       showPickBo={showPickBo}
                       setShowPickBo={setShowPickBo}
+                      showPriceRange={showPriceRange}
+                      setShowPriceRange={setShowPriceRange}
                       isInvertedY={isInvertedY}
                       setIsInvertedY={setIsInvertedY}
                       isLogScale={isLogScale}
@@ -1466,6 +1480,7 @@ export default function App() {
                     showIchimoku={showIchimoku}
                     showMoneyFlow={showMoneyFlow}
                     showPickBo={showPickBo}
+                    showPriceRange={showPriceRange}
                     isInvertedY={isInvertedY}
                     chartType={chartType}
                     onHover={setHoveredData}
@@ -2105,6 +2120,8 @@ export default function App() {
         onToggleNotebook={() => setShowNotebook(!showNotebook)}
         isElliottWaveAiEnabled={isElliottWaveAiEnabled}
         onToggleElliottWaveAi={() => setIsElliottWaveAiEnabled(!isElliottWaveAiEnabled)}
+        showChartControls={showChartControls}
+        onToggleChartControls={() => setShowChartControls(!showChartControls)}
       />
 
       {/* AI Confirmation Modal */}

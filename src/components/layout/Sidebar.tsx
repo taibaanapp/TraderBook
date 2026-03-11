@@ -101,9 +101,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="px-6 pb-6 animate-in fade-in slide-in-from-top-2">
             <StockProfile 
               symbol={symbol} 
-              profile={stockProfile} 
+              data={stockProfile} 
               loading={profileLoading}
+              isExpanded={isProfileExpanded}
+              onToggle={() => setIsProfileExpanded(!isProfileExpanded)}
+              isAiEnabled={true}
+              onToggleAi={() => {}}
               onFetch={() => fetchStockProfile(symbol, stockData?.fullExchangeName)}
+              theme={theme}
             />
           </div>
         )}
@@ -178,8 +183,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {isSimulationExpanded && (
           <div className="px-6 pb-6 space-y-6 animate-in fade-in slide-in-from-top-2">
             <ReversalBox 
-              data={stockData?.data || []} 
-              onAnalyze={async () => {}} 
+              symbol={symbol}
+              analysis={null}
+              currentPrice={stockData?.currentPrice || 0}
+              theme={theme}
             />
             
             <div className="space-y-4">
@@ -250,15 +257,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
 
             <WhatIfBox 
-              onSimulate={(rate) => {
-                setSimulationRate(rate);
-                setIsSimulationMode(true);
-              }}
-              onReset={() => {
-                setIsSimulationMode(false);
-                setSimulationRate(-1.5);
-              }}
-              isSimulating={isSimulationMode}
+              result={{} as any}
+              interval={""}
+              theme={theme}
+              isExpanded={true}
             />
           </div>
         )}
@@ -289,7 +291,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {isFinancialsExpanded && (
           <div className="px-6 pb-6 animate-in fade-in slide-in-from-top-2">
-            <FinancialIndicators data={stockData} />
+            <FinancialIndicators 
+              symbol={symbol}
+              theme={theme}
+              isExpanded={isFinancialsExpanded}
+              onToggle={() => setIsFinancialsExpanded(!isFinancialsExpanded)}
+            />
           </div>
         )}
       </div>

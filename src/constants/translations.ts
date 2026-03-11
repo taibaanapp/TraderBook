@@ -23,6 +23,9 @@ export const TRANSLATIONS = {
       education_only: "* การจำลองทางสถิติเพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำการลงทุน",
       chart: "กราฟ",
       portfolio: "พอร์ตโฟลิโอ",
+      stock_profile: "ข้อมูลหุ้น",
+      simulation_analysis: "การจำลองและวิเคราะห์",
+      financial_indicators: "ตัวชี้วัดทางการเงิน",
     },
     gemini: {
       analyze_with_gemini: "หาข่าวด้วย Gemini",
@@ -227,6 +230,7 @@ export const TRANSLATIONS = {
       actions: "Actions",
       line: "Line",
       candle: "Candle",
+      powerc: "PowerC",
       sim: "SIM",
       sr: "S/R",
       ghost: "GHOST",
@@ -253,6 +257,8 @@ export const TRANSLATIONS = {
       rsi_title: "Relative Strength Index",
       macd_title: "Moving Average Convergence Divergence",
       emax_title: "Exponential Moving Average (50/135)",
+      prange: "P.Range",
+      prange_title: "Price Range Tool",
       log_title: "Toggle Logarithmic Scale",
       invert_y_title: "Invert Y-Axis (Prices)"
     },

@@ -6,50 +6,52 @@ import { TRANSLATIONS } from '../constants/translations';
 const t = TRANSLATIONS.TH.controls;
 
 interface ChartControlsProps {
-  interval: string;
-  setInterval: (val: string) => void;
-  chartType: 'line' | 'candlestick';
-  setChartType: (val: 'line' | 'candlestick') => void;
-  showVWAP: boolean;
-  setShowVWAP: (val: boolean) => void;
-  showOBV: boolean;
-  setShowOBV: (val: boolean) => void;
-  showVolume: boolean;
-  setShowVolume: (val: boolean) => void;
-  showEMAX: boolean;
-  setShowEMAX: (val: boolean) => void;
-  showEMA20: boolean;
-  setShowEMA20: (val: boolean) => void;
-  showEMA50: boolean;
-  setShowEMA50: (val: boolean) => void;
-  showRSI: boolean;
-  setShowRSI: (val: boolean) => void;
-  showMACD: boolean;
-  setShowMACD: (val: boolean) => void;
-  showElliottWaves: boolean;
-  setShowElliottWaves: (val: boolean) => void;
-  showVolumeSpikes: boolean;
-  setShowVolumeSpikes: (val: boolean) => void;
-  showIchimoku: boolean;
-  setShowIchimoku: (val: boolean) => void;
-  showMoneyFlow: boolean;
-  setShowMoneyFlow: (val: boolean) => void;
-  showPickBo: boolean;
-  setShowPickBo: (val: boolean) => void;
-  isInvertedY: boolean;
-  setIsInvertedY: (val: boolean) => void;
-  isLogScale: boolean;
-  setIsLogScale: (val: boolean) => void;
-  isSimulationMode: boolean;
-  setIsSimulationMode: (val: boolean) => void;
-  isSmartSRMode: boolean;
-  setIsSmartSRMode: (val: boolean) => void;
-  isScenarioMode: boolean;
-  onToggleScenario: () => void;
-  onReset: () => void;
-  onRefresh: () => void;
-  isFullscreen: boolean;
-  onToggleFullscreen: () => void;
+  interval?: string;
+  setInterval?: (val: string) => void;
+  chartType?: 'line' | 'candlestick' | 'powerc';
+  setChartType?: (val: 'line' | 'candlestick' | 'powerc') => void;
+  showVWAP?: boolean;
+  setShowVWAP?: (val: boolean) => void;
+  showOBV?: boolean;
+  setShowOBV?: (val: boolean) => void;
+  showVolume?: boolean;
+  setShowVolume?: (val: boolean) => void;
+  showEMAX?: boolean;
+  setShowEMAX?: (val: boolean) => void;
+  showEMA20?: boolean;
+  setShowEMA20?: (val: boolean) => void;
+  showEMA50?: boolean;
+  setShowEMA50?: (val: boolean) => void;
+  showRSI?: boolean;
+  setShowRSI?: (val: boolean) => void;
+  showMACD?: boolean;
+  setShowMACD?: (val: boolean) => void;
+  showElliottWaves?: boolean;
+  setShowElliottWaves?: (val: boolean) => void;
+  showVolumeSpikes?: boolean;
+  setShowVolumeSpikes?: (val: boolean) => void;
+  showIchimoku?: boolean;
+  setShowIchimoku?: (val: boolean) => void;
+  showMoneyFlow?: boolean;
+  setShowMoneyFlow?: (val: boolean) => void;
+  showPickBo?: boolean;
+  setShowPickBo?: (val: boolean) => void;
+  showPriceRange?: boolean;
+  setShowPriceRange?: (val: boolean) => void;
+  isInvertedY?: boolean;
+  setIsInvertedY?: (val: boolean) => void;
+  isLogScale?: boolean;
+  setIsLogScale?: (val: boolean) => void;
+  isSimulationMode?: boolean;
+  setIsSimulationMode?: (val: boolean) => void;
+  isSmartSRMode?: boolean;
+  setIsSmartSRMode?: (val: boolean) => void;
+  isScenarioMode?: boolean;
+  onToggleScenario?: () => void;
+  onReset?: () => void;
+  onRefresh?: () => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
   onSymbolChange?: (symbol: string) => void;
   theme?: 'light' | 'dark';
 }
@@ -91,6 +93,8 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
   setShowMoneyFlow,
   showPickBo,
   setShowPickBo,
+  showPriceRange,
+  setShowPriceRange,
   isInvertedY,
   setIsInvertedY,
   isLogScale,
@@ -171,10 +175,9 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
       {/* Chart Type Group */}
       <div className="flex flex-col gap-1.5">
         <span className="px-1 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{t.type}</span>
-        <div className={cn("flex p-1 rounded-lg border", isDark ? "bg-zinc-800/50 border-zinc-700/50" : "bg-zinc-50 border-zinc-200", (isSmartSRMode || isScenarioMode) && "opacity-50 pointer-events-none")}>
+        <div className={cn("flex p-1 rounded-lg border", isDark ? "bg-zinc-800/50 border-zinc-700/50" : "bg-zinc-50 border-zinc-200")}>
           <button
-            disabled={isSmartSRMode || isScenarioMode}
-            onClick={() => setChartType('line')}
+            onClick={() => setChartType?.('line')}
             title={t.line}
             className={cn(
               "px-3 py-1.5 text-[11px] font-bold uppercase tracking-tight rounded-md transition-all",
@@ -186,8 +189,7 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
             {t.line}
           </button>
           <button
-            disabled={isSmartSRMode || isScenarioMode}
-            onClick={() => setChartType('candlestick')}
+            onClick={() => setChartType?.('candlestick')}
             title={t.candle}
             className={cn(
               "px-3 py-1.5 text-[11px] font-bold uppercase tracking-tight rounded-md transition-all",
@@ -197,6 +199,18 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
             )}
           >
             {t.candle}
+          </button>
+          <button
+            onClick={() => setChartType?.('powerc')}
+            title="Power Candle (DIY Style)"
+            className={cn(
+              "px-3 py-1.5 text-[11px] font-bold uppercase tracking-tight rounded-md transition-all",
+              chartType === 'powerc' 
+                ? (isDark ? "bg-zinc-100 text-zinc-900 shadow-sm" : "bg-zinc-900 text-white shadow-sm") 
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+            )}
+          >
+            {t.powerc}
           </button>
         </div>
       </div>
@@ -440,6 +454,18 @@ export const ChartControls: React.FC<ChartControlsProps> = ({
             )}
           >
             PickBo
+          </button>
+          <button
+            onClick={() => setShowPriceRange?.(!showPriceRange)}
+            title={t.prange_title}
+            className={cn(
+              "px-3 py-1.5 rounded-md font-bold text-[11px] uppercase tracking-tight transition-all",
+              showPriceRange 
+                ? (isDark ? "bg-blue-900/40 text-blue-400 shadow-sm" : "bg-blue-100 text-blue-700 shadow-sm") 
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            )}
+          >
+            {t.prange}
           </button>
         </div>
       </div>

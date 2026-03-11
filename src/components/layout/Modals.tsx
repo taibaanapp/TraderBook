@@ -91,8 +91,8 @@ export const Modals: React.FC<ModalsProps> = ({
         error={geminiError}
         analysis={geminiAnalysis}
         elliottAnalysis={elliottAnalysis}
-        targetDate={geminiTargetDate}
-        usage={geminiUsage}
+        symbol={""}
+        date={geminiTargetDate}
         theme={theme}
       />
 
@@ -138,16 +138,16 @@ export const Modals: React.FC<ModalsProps> = ({
         isOpen={isSettingsOpen} 
         onClose={() => setIsSettingsOpen(false)}
         theme={theme}
-        showTicker={showTicker} setShowTicker={setShowTicker}
-        showStockProfile={showStockProfile} setShowStockProfile={setShowStockProfile}
-        showFinancials={showFinancials} setShowFinancials={setShowFinancials}
-        showGeminiNews={showGeminiNews} setShowGeminiNews={setShowGeminiNews}
-        showSaveImage={showSaveImage} setShowSaveImage={setShowSaveImage}
-        showRecentStocks={showRecentStocks} setShowRecentStocks={setShowRecentStocks}
-        showNotebook={showNotebook} setShowNotebook={setShowNotebook}
-        isAiInsightEnabled={isAiInsightEnabled} setIsAiInsightEnabled={setIsAiInsightEnabled}
-        isElliottWaveAiEnabled={isElliottWaveAiEnabled} setIsElliottWaveAiEnabled={setIsElliottWaveAiEnabled}
-        showChartControls={showChartControls} setShowChartControls={setShowChartControls}
+        showTicker={showTicker} onToggleTicker={() => setShowTicker(!showTicker)}
+        showStockProfile={showStockProfile} onToggleStockProfile={() => setShowStockProfile(!showStockProfile)}
+        showFinancials={showFinancials} onToggleFinancials={() => setShowFinancials(!showFinancials)}
+        showGeminiNews={showGeminiNews} onToggleGeminiNews={() => setShowGeminiNews(!showGeminiNews)}
+        showSaveImage={showSaveImage} onToggleSaveImage={() => setShowSaveImage(!showSaveImage)}
+        showRecentStocks={showRecentStocks} onToggleRecentStocks={() => setShowRecentStocks(!showRecentStocks)}
+        showNotebook={showNotebook} onToggleNotebook={() => setShowNotebook(!showNotebook)}
+        isAiInsightEnabled={isAiInsightEnabled} onToggleAiInsight={() => setIsAiInsightEnabled(!isAiInsightEnabled)}
+        isElliottWaveAiEnabled={isElliottWaveAiEnabled} onToggleElliottWaveAi={() => setIsElliottWaveAiEnabled(!isElliottWaveAiEnabled)}
+        showChartControls={showChartControls} onToggleChartControls={() => setShowChartControls(!showChartControls)}
       />
 
       <AdminPanel 

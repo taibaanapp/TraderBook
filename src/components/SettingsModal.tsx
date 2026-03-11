@@ -27,6 +27,8 @@ interface SettingsModalProps {
   onToggleNotebook: () => void;
   isElliottWaveAiEnabled: boolean;
   onToggleElliottWaveAi: () => void;
+  showChartControls: boolean;
+  onToggleChartControls: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -50,7 +52,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   showNotebook,
   onToggleNotebook,
   isElliottWaveAiEnabled,
-  onToggleElliottWaveAi
+  onToggleElliottWaveAi,
+  showChartControls,
+  onToggleChartControls
 }) => {
   const isDark = theme === 'dark';
 
